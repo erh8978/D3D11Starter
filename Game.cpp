@@ -4,6 +4,9 @@
 #include "Input.h"
 #include "PathHelpers.h"
 #include "Window.h"
+#include "imgui.h"
+#include "imgui_impl_dx11.h"
+#include "imgui_impl_win32.h"
 
 #include <DirectXMath.h>
 
@@ -20,6 +23,17 @@ using namespace DirectX;
 // --------------------------------------------------------
 Game::Game()
 {
+	{ // Initialize ImGui itself & platform/renderer backends
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGui_ImplWin32_Init(Window::Handle());
+		ImGui_ImplDX11_Init(Graphics::Device.Get(), Graphics::Context.Get());
+		// Pick a style (uncomment one of these 3)
+		ImGui::StyleColorsDark();
+		//ImGui::StyleColorsLight();
+		//ImGui::StyleColorsClassic();
+	}
+
 	// Helper methods for loading shaders, creating some basic
 	// geometry to draw and some simple camera matrices.
 	//  - You'll be expanding and/or replacing these later
@@ -58,7 +72,11 @@ Game::Game()
 // --------------------------------------------------------
 Game::~Game()
 {
-
+	{ // ImGui clean up
+		ImGui_ImplDX11_Shutdown();
+		ImGui_ImplWin32_Shutdown();
+		ImGui::DestroyContext();
+	}
 }
 
 
@@ -244,6 +262,10 @@ void Game::Update(float deltaTime, float totalTime)
 	// Example input checking: Quit if the escape key is pressed
 	if (Input::KeyDown(VK_ESCAPE))
 		Window::Quit();
+
+	StartImGuiUpdate(deltaTime);
+
+	BuildCustomUI(deltaTime);
 }
 
 
@@ -257,8 +279,7 @@ void Game::Draw(float deltaTime, float totalTime)
 	// - At the beginning of Game::Draw() before drawing *anything*
 	{
 		// Clear the back buffer (erase what's on screen) and depth buffer
-		const float color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
-		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(),	color);
+		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(),	backgroundColor);
 		Graphics::Context->ClearDepthStencilView(Graphics::DepthBufferDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 	}
 
@@ -292,6 +313,9 @@ void Game::Draw(float deltaTime, float totalTime)
 	// - These should happen exactly ONCE PER FRAME
 	// - At the very end of the frame (after drawing *everything*)
 	{
+		// Draw ImGui last, so it appears over everything else.
+		Game::RenderImGui();
+
 		// Present at the end of the frame
 		bool vsync = Graphics::VsyncState();
 		Graphics::SwapChain->Present(
@@ -304,6 +328,114 @@ void Game::Draw(float deltaTime, float totalTime)
 			Graphics::BackBufferRTV.GetAddressOf(),
 			Graphics::DepthBufferDSV.Get());
 	}
+}
+
+
+// -----------------------------------------------------
+// Does all basic ImGui-related tasks for Game::Update()
+// -----------------------------------------------------
+void Game::StartImGuiUpdate(float deltaTime)
+{
+	// Struct for data transfer to and from ImGui
+	ImGuiIO& io = ImGui::GetIO();
+
+	{ // Send fresh window and time data to ImGui
+		io.DeltaTime = deltaTime;
+		io.DisplaySize.x = (float)Window::Width();
+		io.DisplaySize.y = (float)Window::Height();
+	}
+
+	{ // Reset ImGui frame
+		ImGui_ImplDX11_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+	}
+
+	{ // Determine new input capture
+		Input::SetKeyboardCapture(io.WantCaptureKeyboard);
+		Input::SetMouseCapture(io.WantCaptureMouse);
+	}
+
+	// Render the ImGui demo window
+	if (showImGuiDemoWindow)
+	{
+		ImGui::ShowDemoWindow();
+	}
+}
+
+
+// --------------------------------
+// Creates a custom ImGui interface
+// --------------------------------
+void Game::BuildCustomUI(float deltaTime)
+{
+	{ // Any ImGui methods called between ImGui::Begin() and ImGui::End() will be placed in a new window.
+		ImGui::Begin("540 ImGui Window");
+
+		// Framerate is how many frames happen in a second,
+		// DeltaTime is the duration of one frame (in seconds),
+		// So divide one second into DeltaTime frames to get how many frames per second.
+		// float framerate = 1.0 / deltaTime;
+
+		// ...or ImGui could just provide that info for free.
+		float framerate = ImGui::GetIO().Framerate;
+		ImGui::Text("Framerate: %f fps", framerate);
+
+		int width = Window::Width();
+		int height = Window::Height();
+		ImGui::Text("Window Dimensions: %ix%ip", width, height);
+
+		// Because backgroundColor is an array pointer, any changes to it automatically happen elsewhere (mostly in Draw())
+		ImGui::ColorEdit4("Game Background Color", backgroundColor);
+
+		if (ImGui::Button("Reset Background"))
+		{
+			// I can't figure out a better way of resetting the array's values,
+			// so here I am doing it like a fool.
+			backgroundColor[0] = 0.4f;
+			backgroundColor[1] = 0.6f;
+			backgroundColor[2] = 0.75f;
+			backgroundColor[3] = 1.0f;
+		}
+
+		if (ImGui::Button("Show/Hide ImGui Demo Window"))
+		{
+			showImGuiDemoWindow = !showImGuiDemoWindow;
+		}
+
+		// Slider for user "rating" of debug UI
+		ImGui::Text("Please rate this Debug UI.");
+		static int rating = 5;
+		ImGui::SliderInt("/10", &rating, 1, 10);
+
+		// Display special text if the slider is at either extreme
+		if (rating >= 10)
+		{
+			ImGui::Text("Thank you!!!");
+		}
+		else if (rating <= 1)
+		{
+			ImGui::Text("Awwww....");
+		}
+
+		// Text input box
+		ImGui::Text("Leave your feedback below!");
+		const int maximumFeedbackLength = 64;
+		static char feedback[maximumFeedbackLength];
+		ImGui::InputText("Feedback", feedback, maximumFeedbackLength);
+
+		// This goes last!
+		ImGui::End();
+	}
+}
+
+// ------------------------------
+// Renders ImGui for Game::Draw()
+// ------------------------------
+void Game::RenderImGui()
+{
+	ImGui::Render(); // Turns this frame’s UI into renderable triangles
+	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData()); // Draws it to the screen
 }
 
 

@@ -23,6 +23,13 @@ private:
 	void LoadShaders();
 	void CreateGeometry();
 
+	void StartImGuiUpdate(float deltaTime);
+	void BuildCustomUI(float deltaTime);
+	void RenderImGui();
+
+	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
+	bool showImGuiDemoWindow = false;
+
 	// Note the usage of ComPtr below
 	//  - This is a smart pointer for objects that abide by the
 	//     Component Object Model, which DirectX objects do
