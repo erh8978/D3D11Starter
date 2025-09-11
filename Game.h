@@ -1,7 +1,11 @@
 #pragma once
 
+#include "Mesh.h"
+
 #include <d3d11.h>
 #include <wrl/client.h>
+#include <memory>
+#include <vector>
 
 class Game
 {
@@ -27,6 +31,8 @@ private:
 	void BuildCustomUI(float deltaTime);
 	void RenderImGui();
 
+	void DrawAllMeshes();
+
 	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
 	bool showImGuiDemoWindow = false;
 
@@ -43,5 +49,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader;
 	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader;
 	Microsoft::WRL::ComPtr<ID3D11InputLayout> inputLayout;
+
+	// Meshes
+	std::vector<std::shared_ptr<Mesh>> meshes;
 };
 
