@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Mesh.h"
+#include "BufferStructs.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -45,6 +46,9 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader;
 	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader;
 	Microsoft::WRL::ComPtr<ID3D11InputLayout> inputLayout;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> constBuffer;
+
+	VertexShaderData vsData = {DirectX::XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f), DirectX::XMFLOAT3(-0.25f, 0.0f, 0.0f)};
 
 	// Meshes
 	std::vector<std::shared_ptr<Mesh>> meshes;

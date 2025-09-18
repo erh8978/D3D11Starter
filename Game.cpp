@@ -7,6 +7,7 @@
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
 #include "imgui_impl_win32.h"
+#include "BufferStructs.h"
 
 #include <DirectXMath.h>
 #include <memory>
@@ -40,6 +41,17 @@ Game::Game()
 	//  - You'll be expanding and/or replacing these later
 	LoadShaders();
 	CreateGeometry();
+
+	// Set up a constant buffer for vertex shader data
+	{
+		D3D11_BUFFER_DESC constBufferDescription = {}; // Initialize to all zeros
+		constBufferDescription.BindFlags		 = D3D11_BIND_CONSTANT_BUFFER;
+		constBufferDescription.ByteWidth		 = (sizeof(VertexShaderData) + 15) / 16 * 16; // Must be a multiple of 16
+		constBufferDescription.CPUAccessFlags	 = D3D11_CPU_ACCESS_WRITE; // We have to be able to write to this buffer from C++
+		constBufferDescription.Usage			 = D3D11_USAGE_DYNAMIC; // This buffer can change
+
+		Graphics::Device->CreateBuffer(&constBufferDescription, 0, constBuffer.GetAddressOf());
+	}
 
 	// Set initial graphics API state
 	//  - These settings persist until we change them
@@ -159,16 +171,16 @@ void Game::CreateGeometry()
 {
 	// Create some temporary variables to represent colors
 	// - Not necessary, just makes things more readable
-	XMFLOAT4 red = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-	XMFLOAT4 orange = XMFLOAT4(1.0f, 0.5f, 0.0f, 1.0f);
-	XMFLOAT4 yellow = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f);
-	XMFLOAT4 green = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
-	XMFLOAT4 blue = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
-	XMFLOAT4 purple = XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f);
-	XMFLOAT4 black = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
-	XMFLOAT4 darkGray = XMFLOAT4(0.33f, 0.33f, 0.33f, 1.0f);
-	XMFLOAT4 lightGray = XMFLOAT4(0.66f, 0.66f, 0.66f, 1.0f);
-	XMFLOAT4 white = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	XMFLOAT4 red(1.0f, 0.0f, 0.0f, 1.0f);
+	XMFLOAT4 orange(1.0f, 0.5f, 0.0f, 1.0f);
+	XMFLOAT4 yellow(1.0f, 1.0f, 0.0f, 1.0f);
+	XMFLOAT4 green(0.0f, 1.0f, 0.0f, 1.0f);
+	XMFLOAT4 blue(0.0f, 0.0f, 1.0f, 1.0f);
+	XMFLOAT4 purple(1.0f, 0.0f, 1.0f, 1.0f);
+	XMFLOAT4 black(0.0f, 0.0f, 0.0f, 1.0f);
+	XMFLOAT4 darkGray(0.33f, 0.33f, 0.33f, 1.0f);
+	XMFLOAT4 lightGray(0.66f, 0.66f, 0.66f, 1.0f);
+	XMFLOAT4 white(1.0f, 1.0f, 1.0f, 1.0f);
 
 	// Create three unique Meshes
 	// Start with a smaller version of the original triangle.
@@ -299,6 +311,21 @@ void Game::Draw(float deltaTime, float totalTime)
 		Graphics::Context->ClearDepthStencilView(Graphics::DepthBufferDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 	}
 
+	// Update constant buffer with colorTint and offset data
+	{
+		D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
+		Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
+
+		memcpy(mappedBuffer.pData, &vsData, sizeof(vsData));
+
+		Graphics::Context->Unmap(constBuffer.Get(), 0);
+
+		Graphics::Context->VSSetConstantBuffers(
+			0, // Which register to bind the buffer to? (b0)
+			1, // How many are we setting right now?
+			constBuffer.GetAddressOf()); // Array of buffers (or address of just one)
+	}
+
 	// DRAW geometry
 	// - These steps are generally repeated for EACH object you draw
 	// - Other Direct3D calls will also be necessary to do more complex things
@@ -395,32 +422,6 @@ void Game::BuildCustomUI(float deltaTime)
 			backgroundColor[3] = 1.0f;
 		}
 
-		if (ImGui::Button("Show/Hide ImGui Demo Window"))
-		{
-			showImGuiDemoWindow = !showImGuiDemoWindow;
-		}
-
-		// Slider for user "rating" of debug UI
-		ImGui::Text("Please rate this Debug UI.");
-		static int rating = 5;
-		ImGui::SliderInt("/10", &rating, 1, 10);
-
-		// Display special text if the slider is at either extreme
-		if (rating >= 10)
-		{
-			ImGui::Text("Thank you!!!");
-		}
-		else if (rating <= 1)
-		{
-			ImGui::Text("Awwww....");
-		}
-
-		// Text input box
-		ImGui::Text("Leave your feedback below!");
-		const int maximumFeedbackLength = 64;
-		static char feedback[maximumFeedbackLength];
-		ImGui::InputText("Feedback", feedback, maximumFeedbackLength);
-
 		// Dropdown tree with info on each Mesh
 		if (ImGui::TreeNode("Mesh Info"))
 		{
@@ -452,6 +453,43 @@ void Game::BuildCustomUI(float deltaTime)
 			// Has to be done at the end of each tree node!
 			ImGui::TreePop();
 		}
+
+		// Dropdown for colorTint and offset
+		if (ImGui::TreeNode("Color Tint & Offset"))
+		{
+			ImGui::ColorEdit4("Color Tint", &vsData.colorTint.x);
+
+			ImGui::DragFloat3("Offset", &vsData.offset.x, 0.01f);
+
+			// Has to be done at the end of each tree node!
+			ImGui::TreePop();
+		}
+
+		if (ImGui::Button("Show/Hide ImGui Demo Window"))
+		{
+			showImGuiDemoWindow = !showImGuiDemoWindow;
+		}
+
+		// Slider for user "rating" of debug UI
+		ImGui::Text("Please rate this Debug UI.");
+		static int rating = 5;
+		ImGui::SliderInt("/10", &rating, 1, 10);
+
+		// Display special text if the slider is at either extreme
+		if (rating >= 10)
+		{
+			ImGui::Text("Thank you!!!");
+		}
+		else if (rating <= 1)
+		{
+			ImGui::Text("Awwww....");
+		}
+
+		// Text input box
+		ImGui::Text("Leave your feedback below!");
+		const int maximumFeedbackLength = 64;
+		static char feedback[maximumFeedbackLength];
+		ImGui::InputText("Feedback", feedback, maximumFeedbackLength);
 
 		// This goes last!
 		ImGui::End();
