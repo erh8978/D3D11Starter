@@ -27,15 +27,24 @@ private:
 	// Initialization helper methods - feel free to customize, combine, remove, etc.
 	void LoadShaders();
 	void CreateGeometry();
+	void InitializeConstantBuffer();
 
+	// Done in Update()
 	void StartImGuiUpdate(float deltaTime);
 	void BuildCustomUI(float deltaTime);
-	void RenderImGui();
-
+	
+	// Done in Draw()
+	void FrameStart();
 	void DrawAllMeshes();
+	void RenderImGui();
+	void FrameEnd();
 
+	// Values that can be changed through ImGui
 	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
 	bool showImGuiDemoWindow = false;
+	VertexShaderData vsData = { // Struct that will be passed to GPU via constBuffer
+		DirectX::XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f), // colorTint - what color do we want the geometry's colors to be multiplied by?
+		DirectX::XMFLOAT3(-0.25f, 0.0f, 0.0f) }; // offset - where should all geomerty be shifted to?
 
 	// Note the usage of ComPtr below
 	//  - This is a smart pointer for objects that abide by the
@@ -47,8 +56,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader;
 	Microsoft::WRL::ComPtr<ID3D11InputLayout> inputLayout;
 	Microsoft::WRL::ComPtr<ID3D11Buffer> constBuffer;
-
-	VertexShaderData vsData = {DirectX::XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f), DirectX::XMFLOAT3(-0.25f, 0.0f, 0.0f)};
 
 	// Meshes
 	std::vector<std::shared_ptr<Mesh>> meshes;

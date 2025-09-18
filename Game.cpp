@@ -41,17 +41,7 @@ Game::Game()
 	//  - You'll be expanding and/or replacing these later
 	LoadShaders();
 	CreateGeometry();
-
-	// Set up a constant buffer for vertex shader data
-	{
-		D3D11_BUFFER_DESC constBufferDescription = {}; // Initialize to all zeros
-		constBufferDescription.BindFlags		 = D3D11_BIND_CONSTANT_BUFFER;
-		constBufferDescription.ByteWidth		 = (sizeof(VertexShaderData) + 15) / 16 * 16; // Must be a multiple of 16
-		constBufferDescription.CPUAccessFlags	 = D3D11_CPU_ACCESS_WRITE; // We have to be able to write to this buffer from C++
-		constBufferDescription.Usage			 = D3D11_USAGE_DYNAMIC; // This buffer can change
-
-		Graphics::Device->CreateBuffer(&constBufferDescription, 0, constBuffer.GetAddressOf());
-	}
+	InitializeConstantBuffer();
 
 	// Set initial graphics API state
 	//  - These settings persist until we change them
@@ -272,13 +262,18 @@ void Game::CreateGeometry()
 }
 
 
-// --------------------------------------------------------
-// Handle resizing to match the new window size
-//  - Eventually, we'll want to update our 3D camera
-// --------------------------------------------------------
-void Game::OnResize()
+// -----------------------------------------------------------
+// Initialize a buffer on the GPU that our C++ code can change
+// -----------------------------------------------------------
+void Game::InitializeConstantBuffer()
 {
-	
+	D3D11_BUFFER_DESC constBufferDescription = {}; // Initialize to all zeros
+	constBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	constBufferDescription.ByteWidth = (sizeof(VertexShaderData) + 15) / 16 * 16; // Must be a multiple of 16
+	constBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // We have to be able to write to this buffer from C++
+	constBufferDescription.Usage = D3D11_USAGE_DYNAMIC; // This buffer can change
+
+	Graphics::Device->CreateBuffer(&constBufferDescription, 0, constBuffer.GetAddressOf());
 }
 
 
@@ -294,64 +289,6 @@ void Game::Update(float deltaTime, float totalTime)
 	StartImGuiUpdate(deltaTime);
 
 	BuildCustomUI(deltaTime);
-}
-
-
-// --------------------------------------------------------
-// Clear the screen, redraw everything, present to the user
-// --------------------------------------------------------
-void Game::Draw(float deltaTime, float totalTime)
-{
-	// Frame START
-	// - These things should happen ONCE PER FRAME
-	// - At the beginning of Game::Draw() before drawing *anything*
-	{
-		// Clear the back buffer (erase what's on screen) and depth buffer
-		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(),	backgroundColor);
-		Graphics::Context->ClearDepthStencilView(Graphics::DepthBufferDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
-	}
-
-	// Update constant buffer with colorTint and offset data
-	{
-		D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
-		Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
-
-		memcpy(mappedBuffer.pData, &vsData, sizeof(vsData));
-
-		Graphics::Context->Unmap(constBuffer.Get(), 0);
-
-		Graphics::Context->VSSetConstantBuffers(
-			0, // Which register to bind the buffer to? (b0)
-			1, // How many are we setting right now?
-			constBuffer.GetAddressOf()); // Array of buffers (or address of just one)
-	}
-
-	// DRAW geometry
-	// - These steps are generally repeated for EACH object you draw
-	// - Other Direct3D calls will also be necessary to do more complex things
-	{
-		DrawAllMeshes();
-	}
-
-	// Frame END
-	// - These should happen exactly ONCE PER FRAME
-	// - At the very end of the frame (after drawing *everything*)
-	{
-		// Draw ImGui last, so it appears over everything else.
-		Game::RenderImGui();
-
-		// Present at the end of the frame
-		bool vsync = Graphics::VsyncState();
-		Graphics::SwapChain->Present(
-			vsync ? 1 : 0,
-			vsync ? 0 : DXGI_PRESENT_ALLOW_TEARING);
-
-		// Re-bind back buffer and depth buffer after presenting
-		Graphics::Context->OMSetRenderTargets(
-			1,
-			Graphics::BackBufferRTV.GetAddressOf(),
-			Graphics::DepthBufferDSV.Get());
-	}
 }
 
 
@@ -496,14 +433,56 @@ void Game::BuildCustomUI(float deltaTime)
 	}
 }
 
-// ------------------------------
-// Renders ImGui for Game::Draw()
-// ------------------------------
-void Game::RenderImGui()
+
+// --------------------------------------------------------
+// Clear the screen, redraw everything, present to the user
+// --------------------------------------------------------
+void Game::Draw(float deltaTime, float totalTime)
 {
-	ImGui::Render(); // Turns this frame’s UI into renderable triangles
-	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData()); // Draws it to the screen
+	FrameStart();
+
+	// Update constant buffer with colorTint and offset data
+	{
+		D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
+		Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
+
+		memcpy(mappedBuffer.pData, &vsData, sizeof(vsData));
+
+		Graphics::Context->Unmap(constBuffer.Get(), 0);
+
+		Graphics::Context->VSSetConstantBuffers(
+			0, // Which register to bind the buffer to? (b0)
+			1, // How many are we setting right now?
+			constBuffer.GetAddressOf()); // Array of buffers (or address of just one)
+	}
+
+	// DRAW geometry
+	// - These steps are generally repeated for EACH object you draw
+	// - Other Direct3D calls will also be necessary to do more complex things
+	DrawAllMeshes();
+
+	// Draw ImGui last, so it appears over everything else.
+	RenderImGui();
+
+	FrameEnd();
 }
+
+
+// -----------------------------------------
+// Does everything needed to start the frame
+// -----------------------------------------
+void Game::FrameStart()
+{
+	// Frame START
+	// - These things should happen ONCE PER FRAME
+	// - At the beginning of Game::Draw() before drawing *anything*
+	{
+		// Clear the back buffer (erase what's on screen) and depth buffer
+		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(), backgroundColor);
+		Graphics::Context->ClearDepthStencilView(Graphics::DepthBufferDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
+	}
+}
+
 
 // ------------------------------------------------
 // Loops through the Meshes list and draws each one
@@ -517,3 +496,42 @@ void Game::DrawAllMeshes()
 }
 
 
+// ------------------------------
+// Renders ImGui for Game::Draw()
+// ------------------------------
+void Game::RenderImGui()
+{
+	ImGui::Render(); // Turns this frame’s UI into renderable triangles
+	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData()); // Draws it to the screen
+}
+
+
+void Game::FrameEnd()
+{
+	// Frame END
+	// - These should happen exactly ONCE PER FRAME
+	// - At the very end of the frame (after drawing *everything*)
+	{
+		// Present at the end of the frame
+		bool vsync = Graphics::VsyncState();
+		Graphics::SwapChain->Present(
+			vsync ? 1 : 0,
+			vsync ? 0 : DXGI_PRESENT_ALLOW_TEARING);
+
+		// Re-bind back buffer and depth buffer after presenting
+		Graphics::Context->OMSetRenderTargets(
+			1,
+			Graphics::BackBufferRTV.GetAddressOf(),
+			Graphics::DepthBufferDSV.Get());
+	}
+}
+
+
+// --------------------------------------------------------
+// Handle resizing to match the new window size
+//  - Eventually, we'll want to update our 3D camera
+// --------------------------------------------------------
+void Game::OnResize()
+{
+
+}
