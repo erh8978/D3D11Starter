@@ -36,6 +36,7 @@ private:
 	// Done in Draw()
 	void FrameStart();
 	void DrawAllMeshes();
+	void SendDataToConstantBuffer();
 	void RenderImGui();
 	void FrameEnd();
 

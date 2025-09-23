@@ -333,12 +333,7 @@ void Game::BuildCustomUI(float deltaTime)
 	{ // Any ImGui methods called between ImGui::Begin() and ImGui::End() will be placed in a new window.
 		ImGui::Begin("540 ImGui Window");
 
-		// Framerate is how many frames happen in a second,
-		// DeltaTime is the duration of one frame (in seconds),
-		// So divide one second into DeltaTime frames to get how many frames per second.
-		// float framerate = 1.0 / deltaTime;
-
-		// ...or ImGui could just provide that info for free.
+		// ImGui provides a variable for framerate, so use that
 		float framerate = ImGui::GetIO().Framerate;
 		ImGui::Text("Framerate: %f fps", framerate);
 
@@ -407,27 +402,6 @@ void Game::BuildCustomUI(float deltaTime)
 			showImGuiDemoWindow = !showImGuiDemoWindow;
 		}
 
-		// Slider for user "rating" of debug UI
-		ImGui::Text("Please rate this Debug UI.");
-		static int rating = 5;
-		ImGui::SliderInt("/10", &rating, 1, 10);
-
-		// Display special text if the slider is at either extreme
-		if (rating >= 10)
-		{
-			ImGui::Text("Thank you!!!");
-		}
-		else if (rating <= 1)
-		{
-			ImGui::Text("Awwww....");
-		}
-
-		// Text input box
-		ImGui::Text("Leave your feedback below!");
-		const int maximumFeedbackLength = 64;
-		static char feedback[maximumFeedbackLength];
-		ImGui::InputText("Feedback", feedback, maximumFeedbackLength);
-
 		// This goes last!
 		ImGui::End();
 	}
@@ -442,19 +416,7 @@ void Game::Draw(float deltaTime, float totalTime)
 	FrameStart();
 
 	// Update constant buffer with colorTint and offset data
-	{
-		D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
-		Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
-
-		memcpy(mappedBuffer.pData, &vsData, sizeof(vsData));
-
-		Graphics::Context->Unmap(constBuffer.Get(), 0);
-
-		Graphics::Context->VSSetConstantBuffers(
-			0, // Which register to bind the buffer to? (b0)
-			1, // How many are we setting right now?
-			constBuffer.GetAddressOf()); // Array of buffers (or address of just one)
-	}
+	SendDataToConstantBuffer();
 
 	// DRAW geometry
 	// - These steps are generally repeated for EACH object you draw
@@ -493,6 +455,24 @@ void Game::DrawAllMeshes()
 	{
 		meshes[i]->Draw();
 	}
+}
+
+// -----------------------------------------------------------------
+// Sends colorTint and offset data to the constant buffer on the GPU
+// -----------------------------------------------------------------
+void Game::SendDataToConstantBuffer()
+{
+	D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
+	Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
+
+	memcpy(mappedBuffer.pData, &vsData, sizeof(vsData));
+
+	Graphics::Context->Unmap(constBuffer.Get(), 0);
+
+	Graphics::Context->VSSetConstantBuffers(
+		0, // Which register to bind the buffer to? (b0)
+		1, // How many are we setting right now?
+		constBuffer.GetAddressOf()); // Array of buffers (or address of just one)
 }
 
 
