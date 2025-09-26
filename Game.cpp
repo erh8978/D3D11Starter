@@ -295,10 +295,10 @@ void Game::Update(float deltaTime, float totalTime)
 	if (Input::KeyDown(VK_ESCAPE))
 		Window::Quit();
 
-	gameEntities[0]->GetTransform()->SetTranslation(sin(totalTime) * 0.5f, -0.7f, 0.0f); // Triangle 1
-	gameEntities[1]->GetTransform()->SetTranslation(sin(totalTime) * -0.5f, 0.7f, 0.0f); // Triangle 2
+	gameEntities[0]->GetTransform()->SetTranslation(sinf(totalTime) * 0.5f, -0.7f, 0.0f); // Triangle 1
+	gameEntities[1]->GetTransform()->SetTranslation(sinf(totalTime) * -0.5f, 0.7f, 0.0f); // Triangle 2
 	gameEntities[1]->GetTransform()->SetPitchYawRoll(0, 0, XMConvertToRadians(180.0f)); // Triangle 2
-	gameEntities[2]->GetTransform()->SetTranslation(sin(totalTime), cos(totalTime), 0.0f); // Square 1
+	gameEntities[2]->GetTransform()->SetTranslation(sinf(totalTime), cosf(totalTime), 0.0f); // Square 1
 	gameEntities[3]->GetTransform()->Rotate(0.0f, 0.0f, deltaTime * 0.1f); // Hexagon 1
 	gameEntities[4]->GetTransform()->Rotate(0.0f, 0.0f, deltaTime * -0.1f); // Hexagon 2
 
