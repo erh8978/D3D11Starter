@@ -43,9 +43,9 @@ private:
 	// Values that can be changed through ImGui
 	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
 	bool showImGuiDemoWindow = false;
-	VertexShaderData vsData = { // Struct that will be passed to GPU via constBuffer
-		DirectX::XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f), // colorTint - what color do we want the geometry's colors to be multiplied by?
-		DirectX::XMFLOAT3(-0.25f, 0.0f, 0.0f) }; // offset - where should all geomerty be shifted to?
+	DirectX::XMFLOAT4 colorTint = DirectX::XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f);
+	DirectX::XMFLOAT3 offset = DirectX::XMFLOAT3(-0.25f, 0.0f, 0.0f);
+	VertexShaderData vsData; // Struct that will be passed to GPU via constBuffer
 
 	// Note the usage of ComPtr below
 	//  - This is a smart pointer for objects that abide by the

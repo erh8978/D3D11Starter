@@ -389,9 +389,9 @@ void Game::BuildCustomUI(float deltaTime)
 		// Dropdown for colorTint and offset
 		if (ImGui::TreeNode("Color Tint & Offset"))
 		{
-			ImGui::ColorEdit4("Color Tint", &vsData.colorTint.x);
+			ImGui::ColorEdit4("Color Tint", &colorTint.x);
 
-			ImGui::DragFloat3("Offset", &vsData.offset.x, 0.01f);
+			ImGui::DragFloat3("Offset", &offset.x, 0.01f);
 
 			// Has to be done at the end of each tree node!
 			ImGui::TreePop();
@@ -462,6 +462,17 @@ void Game::DrawAllMeshes()
 // -----------------------------------------------------------------
 void Game::SendDataToConstantBuffer()
 {
+	// Prepare vsData
+	// ColorTint can be stored directly
+	vsData.colorTint = colorTint;
+
+	// But for the world matrix, we have to
+	// 1. Load offset into an XMVECTOR,
+	// 2. Create a translation XMMATRIX from it, and
+	XMMATRIX world = XMMatrixTranslationFromVector(XMLoadFloat3(&offset));
+	// 3. Store the resulting XMMATRIX into vsData as an XMFLOAT4X4
+	XMStoreFloat4x4(&vsData.worldMatrix, world);
+
 	D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
 	Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
 
