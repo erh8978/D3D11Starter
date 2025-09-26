@@ -10,18 +10,18 @@ public:
 	~Transform();
 
 	void SetScale(float x, float y, float z);
-	void SetScale(DirectX::XMFLOAT3);
+	void SetScale(DirectX::XMFLOAT3 newScale);
 	void SetPitchYawRoll(float p, float y, float r);
-	void SetPitchYawRoll(DirectX::XMFLOAT3);
+	void SetPitchYawRoll(DirectX::XMFLOAT3 newPitchYawRoll);
 	void SetTranslation(float x, float y, float z);
-	void SetTranslation(DirectX::XMFLOAT3);
+	void SetTranslation(DirectX::XMFLOAT3 newTranslation);
 
-	void ScaleBy(float x, float y, float z);
-	void ScaleBy(DirectX::XMFLOAT3);
-	void RotateBy(float p, float y, float r);
-	void RotateBy(DirectX::XMFLOAT3);
-	void TranslateBy(float x, float y, float z);
-	void TranslateBy(DirectX::XMFLOAT3);
+	void Scale(float x, float y, float z);
+	void Scale(DirectX::XMFLOAT3 input);
+	void Rotate(float p, float y, float r);
+	void Rotate(DirectX::XMFLOAT3 input);
+	void MoveAbsolute(float x, float y, float z);
+	void MoveAbsolute(DirectX::XMFLOAT3 input);
 
 	DirectX::XMFLOAT3 GetScale();
 	DirectX::XMFLOAT3 GetPitchYawRoll();
@@ -38,5 +38,6 @@ private:
 	DirectX::XMFLOAT3 translation;
 
 	DirectX::XMFLOAT4X4 world;
+	DirectX::XMFLOAT4X4 worldInverseTranspose;
 };
 
