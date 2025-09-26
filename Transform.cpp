@@ -61,7 +61,7 @@ void Transform::Scale(float x, float y, float z)
 	XMVECTOR original = XMLoadFloat3(&scale);
 	XMVECTOR newScale = XMLoadFloat3(&input);
 
-	XMStoreFloat3(&scale, XMVectorMultiply(original, newScale));
+	XMStoreFloat3(&scale, XMVectorAdd(original, newScale));
 
 	worldMatrixHasChanged = true;
 }
@@ -71,7 +71,7 @@ void Transform::Scale(DirectX::XMFLOAT3 input)
 	XMVECTOR original = XMLoadFloat3(&scale);
 	XMVECTOR newScale = XMLoadFloat3(&input);
 
-	XMStoreFloat3(&scale, XMVectorMultiply(original, newScale));
+	XMStoreFloat3(&scale, XMVectorAdd(original, newScale));
 
 	worldMatrixHasChanged = true;
 }

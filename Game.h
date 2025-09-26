@@ -2,6 +2,7 @@
 
 #include "Mesh.h"
 #include "BufferStructs.h"
+#include "GameEntity.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -35,7 +36,7 @@ private:
 	
 	// Done in Draw()
 	void FrameStart();
-	void DrawAllMeshes();
+	void DrawAllGameEntities();
 	void SendDataToConstantBuffer();
 	void RenderImGui();
 	void FrameEnd();
@@ -44,7 +45,7 @@ private:
 	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
 	bool showImGuiDemoWindow = false;
 	DirectX::XMFLOAT4 colorTint = DirectX::XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f);
-	DirectX::XMFLOAT3 offset = DirectX::XMFLOAT3(-0.25f, 0.0f, 0.0f);
+	DirectX::XMFLOAT4X4 currentWorldMatrix;
 	VertexShaderData vsData; // Struct that will be passed to GPU via constBuffer
 
 	// Note the usage of ComPtr below
@@ -60,5 +61,7 @@ private:
 
 	// Meshes
 	std::vector<std::shared_ptr<Mesh>> meshes;
+	// GameEntities
+	std::vector<std::shared_ptr<GameEntity>> gameEntities;
 };
 

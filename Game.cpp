@@ -212,18 +212,18 @@ void Game::CreateGeometry()
 
 		Vertex squareVertices[] =
 		{
-			{ XMFLOAT3(+0.75f, +0.5f, +0.0f), black }, // Top left
-			{ XMFLOAT3(+0.75f, +0.25f, +0.0f), darkGray }, // Bottom left
-			{ XMFLOAT3(+0.5f, +0.5f, +0.0f), lightGray }, // Top right
-			{ XMFLOAT3(+0.5f, +0.25f, +0.0f), white} // Bottom right
+			{ XMFLOAT3(-0.25f, +0.25f, +0.0f), black }, // Top left
+			{ XMFLOAT3(-0.25f, -0.25f, +0.0f), darkGray }, // Bottom left
+			{ XMFLOAT3(+0.25f, +0.25f, +0.0f), lightGray }, // Top right
+			{ XMFLOAT3(+0.25f, -0.25f, +0.0f), white} // Bottom right
 		};
 
 		const unsigned int squareIndexCount = 6;
 
 		// Set up indices, which tell us which vertices to use and in which order
 		unsigned int squareIndices[] = {
-			0, 1, 2,
-			1, 3, 2
+			0, 3, 1,
+			0, 2, 3
 		};
 
 		meshes.push_back(std::make_shared<Mesh>(squareVertices, squareIndices, squareVertexCount, squareIndexCount, "Square"));
@@ -236,13 +236,13 @@ void Game::CreateGeometry()
 		Vertex hexagonVertices[] = 
 		{
 			// ADD 0.5
-			{ XMFLOAT3(+0.5f, -0.5f, 0.0f), white }, // Center point
-			{ XMFLOAT3(+0.5f, -0.75f, 0.0f), red }, // Bottom point
-			{ XMFLOAT3(+0.4f, -0.6f, 0.0f), orange }, // Bottom-left point
-			{ XMFLOAT3(+0.4f, -0.4f, 0.0f), yellow }, // Top-left point
-			{ XMFLOAT3(+0.5f, -0.25f, 0.0f), green }, // Top point
-			{ XMFLOAT3(+0.6f, -0.4f, 0.0f), blue }, // Top-right point
-			{ XMFLOAT3(+0.6f, -0.6f, 0.0f), purple } // Bottom-right point
+			{ XMFLOAT3(+0.0f, +0.0f, 0.0f), white }, // Center point
+			{ XMFLOAT3(+0.0f, -0.25f, 0.0f), red }, // Bottom point
+			{ XMFLOAT3(-0.1f, -0.1f, 0.0f), orange }, // Bottom-left point
+			{ XMFLOAT3(-0.1f, +0.1f, 0.0f), yellow }, // Top-left point
+			{ XMFLOAT3(+0.0f, +0.25f, 0.0f), green }, // Top point
+			{ XMFLOAT3(+0.1f, +0.1f, 0.0f), blue }, // Top-right point
+			{ XMFLOAT3(+0.1f, -0.1f, 0.0f), purple } // Bottom-right point
 		};
 
 		const unsigned int hexagonIndexCount = 18;
@@ -258,6 +258,15 @@ void Game::CreateGeometry()
 		};
 
 		meshes.push_back(std::make_shared<Mesh>(hexagonVertices, hexagonIndices, hexagonVertexCount, hexagonIndexCount, "Hexagon"));
+	}
+
+	// Create 5 GameEntities, with some sharing the same Mesh
+	{
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0])); // Triangle 1
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0])); // Triangle 2
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1])); // Square 1
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2])); // Hexagon 1
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2])); // Hexagon 2
 	}
 }
 
@@ -285,6 +294,13 @@ void Game::Update(float deltaTime, float totalTime)
 	// Example input checking: Quit if the escape key is pressed
 	if (Input::KeyDown(VK_ESCAPE))
 		Window::Quit();
+
+	gameEntities[0]->GetTransform()->SetTranslation(sin(totalTime) * 0.5f, -0.7f, 0.0f); // Triangle 1
+	gameEntities[1]->GetTransform()->SetTranslation(sin(totalTime) * -0.5f, 0.7f, 0.0f); // Triangle 2
+	gameEntities[1]->GetTransform()->SetPitchYawRoll(0, 0, XMConvertToRadians(180.0f)); // Triangle 2
+	gameEntities[2]->GetTransform()->SetTranslation(sin(totalTime), cos(totalTime), 0.0f); // Square 1
+	gameEntities[3]->GetTransform()->Rotate(0.0f, 0.0f, deltaTime * 0.1f); // Hexagon 1
+	gameEntities[4]->GetTransform()->Rotate(0.0f, 0.0f, deltaTime * -0.1f); // Hexagon 2
 
 	StartImGuiUpdate(deltaTime);
 
@@ -360,7 +376,7 @@ void Game::BuildCustomUI(float deltaTime)
 			// Tree node for each Mesh's info
 			for (unsigned int i = 0; i < meshes.size(); i++)
 			{
-				Mesh* currentMesh = meshes[i].get();
+				std::shared_ptr<Mesh> currentMesh = meshes[i];
 				const char* currentMeshName = currentMesh->meshName.c_str();
 
 				ImGui::PushID(i);
@@ -386,12 +402,45 @@ void Game::BuildCustomUI(float deltaTime)
 			ImGui::TreePop();
 		}
 
+		if (ImGui::TreeNode("Entity Info"))
+		{
+			for (unsigned int i = 0; i < gameEntities.size(); i++)
+			{
+				std::shared_ptr<GameEntity> currentEntity = gameEntities[i];
+				const char* currentEntityMeshName = currentEntity->GetMesh()->meshName.c_str();
+				std::shared_ptr<Transform> currentTransform = currentEntity->GetTransform();
+
+				ImGui::PushID(i);
+
+				if (ImGui::TreeNode("Entity: %s", currentEntityMeshName))
+				{
+					XMFLOAT3 currentTranslation = currentTransform->GetTranslation();
+					XMFLOAT3 currentRotation = currentTransform->GetPitchYawRoll();
+					XMFLOAT3 currentScale = currentTransform->GetScale();
+
+					ImGui::DragFloat3("Position", &currentTranslation.x, 0.1f);
+					ImGui::DragFloat3("Rotation", &currentRotation.x, 0.1f);
+					ImGui::DragFloat3("Scale", &currentScale.x, 0.1f);
+
+					currentTransform->SetTranslation(currentTranslation);
+					currentTransform->SetPitchYawRoll(currentRotation);
+					currentTransform->SetScale(currentScale);
+
+					// Has to be done at the end of each tree node!
+					ImGui::TreePop();
+				}
+
+				ImGui::PopID();
+			}
+
+			// Has to be done at the end of each tree node!
+			ImGui::TreePop();
+		}
+
 		// Dropdown for colorTint and offset
 		if (ImGui::TreeNode("Color Tint & Offset"))
 		{
 			ImGui::ColorEdit4("Color Tint", &colorTint.x);
-
-			ImGui::DragFloat3("Offset", &offset.x, 0.01f);
 
 			// Has to be done at the end of each tree node!
 			ImGui::TreePop();
@@ -415,13 +464,10 @@ void Game::Draw(float deltaTime, float totalTime)
 {
 	FrameStart();
 
-	// Update constant buffer with colorTint and offset data
-	SendDataToConstantBuffer();
-
 	// DRAW geometry
 	// - These steps are generally repeated for EACH object you draw
 	// - Other Direct3D calls will also be necessary to do more complex things
-	DrawAllMeshes();
+	DrawAllGameEntities();
 
 	// Draw ImGui last, so it appears over everything else.
 	RenderImGui();
@@ -449,11 +495,18 @@ void Game::FrameStart()
 // ------------------------------------------------
 // Loops through the Meshes list and draws each one
 // ------------------------------------------------
-void Game::DrawAllMeshes()
+void Game::DrawAllGameEntities()
 {
-	for (unsigned int i = 0; i < meshes.size(); i++)
+	for (unsigned int i = 0; i < gameEntities.size(); i++)
 	{
-		meshes[i]->Draw();
+		// Get the world matrix from the entity
+		currentWorldMatrix = gameEntities[i]->GetTransform()->GetWorldMatrix();
+		
+		// Send transform and color data to the constant buffer
+		SendDataToConstantBuffer();
+		
+		// Now that the shader has access to the correct world matrix, draw the entity's Mesh
+		gameEntities[i]->Draw();
 	}
 }
 
@@ -463,15 +516,8 @@ void Game::DrawAllMeshes()
 void Game::SendDataToConstantBuffer()
 {
 	// Prepare vsData
-	// ColorTint can be stored directly
 	vsData.colorTint = colorTint;
-
-	// But for the world matrix, we have to
-	// 1. Load offset into an XMVECTOR,
-	// 2. Create a translation XMMATRIX from it, and
-	XMMATRIX world = XMMatrixTranslationFromVector(XMLoadFloat3(&offset));
-	// 3. Store the resulting XMMATRIX into vsData as an XMFLOAT4X4
-	XMStoreFloat4x4(&vsData.worldMatrix, world);
+	vsData.worldMatrix = currentWorldMatrix;
 
 	D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
 	Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
