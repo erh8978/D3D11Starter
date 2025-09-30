@@ -499,11 +499,8 @@ void Game::DrawAllGameEntities()
 {
 	for (unsigned int i = 0; i < gameEntities.size(); i++)
 	{
-		// Get the world matrix from the entity
-		currentWorldMatrix = gameEntities[i]->GetTransform()->GetWorldMatrix();
-		
 		// Send transform and color data to the constant buffer
-		SendDataToConstantBuffer();
+		SendDataToConstantBuffer(gameEntities[i]->GetTransform()->GetWorldMatrix());
 		
 		// Now that the shader has access to the correct world matrix, draw the entity's Mesh
 		gameEntities[i]->Draw();
@@ -513,11 +510,11 @@ void Game::DrawAllGameEntities()
 // -----------------------------------------------------------------
 // Sends colorTint and offset data to the constant buffer on the GPU
 // -----------------------------------------------------------------
-void Game::SendDataToConstantBuffer()
+void Game::SendDataToConstantBuffer(XMFLOAT4X4 worldMatrix)
 {
 	// Prepare vsData
 	vsData.colorTint = colorTint;
-	vsData.worldMatrix = currentWorldMatrix;
+	vsData.worldMatrix = worldMatrix;
 
 	D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
 	Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);

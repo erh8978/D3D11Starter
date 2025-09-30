@@ -37,7 +37,7 @@ private:
 	// Done in Draw()
 	void FrameStart();
 	void DrawAllGameEntities();
-	void SendDataToConstantBuffer();
+	void SendDataToConstantBuffer(DirectX::XMFLOAT4X4 worldMatrix);
 	void RenderImGui();
 	void FrameEnd();
 
@@ -45,7 +45,6 @@ private:
 	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
 	bool showImGuiDemoWindow = false;
 	DirectX::XMFLOAT4 colorTint = DirectX::XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f);
-	DirectX::XMFLOAT4X4 currentWorldMatrix;
 	VertexShaderData vsData; // Struct that will be passed to GPU via constBuffer
 
 	// Note the usage of ComPtr below
