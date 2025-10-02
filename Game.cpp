@@ -42,6 +42,7 @@ Game::Game()
 	LoadShaders();
 	CreateGeometry();
 	InitializeConstantBuffer();
+	CreateStartingCameras();
 
 	// Set initial graphics API state
 	//  - These settings persist until we change them
@@ -285,6 +286,16 @@ void Game::InitializeConstantBuffer()
 	Graphics::Device->CreateBuffer(&constBufferDescription, 0, constBuffer.GetAddressOf());
 }
 
+// -----------------------------------------------
+// Create two cameras for the user to swap between
+// -----------------------------------------------
+void Game::CreateStartingCameras()
+{
+	// First camera: set back from starting scene, standard FOV
+	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 0.0f, -3.0f), Window::AspectRatio()));
+	// Second camera: further back from the starting scene, narrower FOV
+	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(1.0f, 0.0f, -10.0f), Window::AspectRatio(), 30.0f));
+}
 
 // --------------------------------------------------------
 // Update your game here - user input, move objects, AI, etc.
@@ -295,16 +306,27 @@ void Game::Update(float deltaTime, float totalTime)
 	if (Input::KeyDown(VK_ESCAPE))
 		Window::Quit();
 
-	gameEntities[0]->GetTransform()->SetTranslation(sinf(totalTime) * 0.5f, -0.7f, 0.0f); // Triangle 1
-	gameEntities[1]->GetTransform()->SetTranslation(sinf(totalTime) * -0.5f, 0.7f, 0.0f); // Triangle 2
+	gameEntities[0]->GetTransform()->SetTranslation(sinf(totalTime) * 0.5f, -0.7f, 0.5f); // Triangle 1
+	gameEntities[1]->GetTransform()->SetTranslation(sinf(totalTime) * -0.5f, 0.7f, -0.5f); // Triangle 2
 	gameEntities[1]->GetTransform()->SetPitchYawRoll(0, 0, XMConvertToRadians(180.0f)); // Triangle 2
-	gameEntities[2]->GetTransform()->SetTranslation(sinf(totalTime), cosf(totalTime), 0.0f); // Square 1
+	gameEntities[2]->GetTransform()->SetTranslation(sinf(totalTime), cosf(totalTime), 10.0f); // Square 1
 	gameEntities[3]->GetTransform()->Rotate(0.0f, 0.0f, deltaTime * 0.1f); // Hexagon 1
 	gameEntities[4]->GetTransform()->Rotate(0.0f, 0.0f, deltaTime * -0.1f); // Hexagon 2
+
+	UpdateCameras(deltaTime);
 
 	StartImGuiUpdate(deltaTime);
 
 	BuildCustomUI(deltaTime);
+}
+
+// ------------------------------------------------
+// Calls Update() on each camera that needs updated
+// ------------------------------------------------
+void Game::UpdateCameras(float deltaTime)
+{
+	// Only update one so that others don't move while they aren't being used
+	cameras[currentCameraIndex]->Update(deltaTime);
 }
 
 
@@ -437,8 +459,33 @@ void Game::BuildCustomUI(float deltaTime)
 			ImGui::TreePop();
 		}
 
+		// Dropdown for active camera info
+		if (ImGui::TreeNode("Active Camera"))
+		{
+			ImGui::Text("Camera # %i", currentCameraIndex);
+			if (ImGui::Button("Previous"))
+			{
+				currentCameraIndex = (currentCameraIndex - 1) % cameras.size();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Next"))
+			{
+				currentCameraIndex = (currentCameraIndex + 1) % cameras.size();
+			}
+
+			XMFLOAT3 cameraPos = cameras[currentCameraIndex]->GetTranslation();
+			XMFLOAT3 cameraRot = cameras[currentCameraIndex]->GetPitchYawRoll();
+			float cameraFov = cameras[currentCameraIndex]->GetFovDegrees();
+			ImGui::Text("Translation: (%f, %f, %f)", cameraPos.x, cameraPos.y, cameraPos.z);
+			ImGui::Text("Pitch, Yaw, Roll: (%f, %f, %f)", cameraRot.x, cameraRot.y, cameraRot.z);
+			ImGui::Text("FOV (Degrees): %f", cameraFov);
+
+			// Has to be done at the end of each tree node!
+			ImGui::TreePop();
+		}
+
 		// Dropdown for colorTint and offset
-		if (ImGui::TreeNode("Color Tint & Offset"))
+		if (ImGui::TreeNode("Color Tint"))
 		{
 			ImGui::ColorEdit4("Color Tint", &colorTint.x);
 
@@ -500,7 +547,10 @@ void Game::DrawAllGameEntities()
 	for (unsigned int i = 0; i < gameEntities.size(); i++)
 	{
 		// Send transform and color data to the constant buffer
-		SendDataToConstantBuffer(gameEntities[i]->GetTransform()->GetWorldMatrix());
+		SendDataToConstantBuffer(
+			gameEntities[i]->GetTransform()->GetWorldMatrix(),
+			cameras[currentCameraIndex]->GetProjectionMatrix(),
+			cameras[currentCameraIndex]->GetViewMatrix());
 		
 		// Now that the shader has access to the correct world matrix, draw the entity's Mesh
 		gameEntities[i]->Draw();
@@ -510,11 +560,13 @@ void Game::DrawAllGameEntities()
 // -----------------------------------------------------------------
 // Sends colorTint and offset data to the constant buffer on the GPU
 // -----------------------------------------------------------------
-void Game::SendDataToConstantBuffer(XMFLOAT4X4 worldMatrix)
+void Game::SendDataToConstantBuffer(XMFLOAT4X4 worldMatrix, XMFLOAT4X4 projectionMatrix, XMFLOAT4X4 viewMatrix)
 {
 	// Prepare vsData
 	vsData.colorTint = colorTint;
 	vsData.worldMatrix = worldMatrix;
+	vsData.projectionMatrix = projectionMatrix;
+	vsData.viewMatrix = viewMatrix;
 
 	D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
 	Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
@@ -567,5 +619,16 @@ void Game::FrameEnd()
 // --------------------------------------------------------
 void Game::OnResize()
 {
+	UpdateAllCameraProjectionMatrices(Window::AspectRatio());
+}
 
+// ----------------------------------------------------------------------
+// When the aspect ratio of the screen is changed, send it to all cameras
+// ----------------------------------------------------------------------
+void Game::UpdateAllCameraProjectionMatrices(float aspectRatio)
+{
+	for (unsigned int i = 0; i < cameras.size(); i++)
+	{
+		if (cameras[i] != nullptr) { cameras[i]->UpdateProjectionMatrix(aspectRatio); }
+	}
 }

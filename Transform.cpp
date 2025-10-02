@@ -6,12 +6,16 @@ using namespace DirectX;
 Transform::Transform() :
 	scale{ XMFLOAT3(1.0f, 1.0f, 1.0f) },
 	pitchYawRoll { XMFLOAT3(0.0f, 0.0f, 0.0f) },
-	translation { XMFLOAT3(0.0f, 0.0f, 0.0f) }
+	translation { XMFLOAT3(0.0f, 0.0f, 0.0f) },
+	right { XMFLOAT3(1.0f, 0.0f, 0.0f) },
+	up { XMFLOAT3(0.0f, 1.0f, 0.0f) },
+	forward { XMFLOAT3(0.0f, 0.0f, 1.0f) }
 {
 	XMStoreFloat4x4(&world, XMMatrixIdentity());
 	XMStoreFloat4x4(&worldInverseTranspose, XMMatrixIdentity());
 
 	worldMatrixHasChanged = true;
+	rotationHasChanged = true;
 }
 
 Transform::~Transform()
@@ -20,8 +24,10 @@ Transform::~Transform()
 
 void Transform::SetScale(float x, float y, float z)
 {
-	scale = XMFLOAT3(x, y, z);
-	worldMatrixHasChanged = true;
+	XMFLOAT3 input(x, y, z);
+
+	// Other function does the same thing, so just call it to prevent code duplication
+	SetScale(input);
 }
 
 void Transform::SetScale(DirectX::XMFLOAT3 newScale)
@@ -32,20 +38,25 @@ void Transform::SetScale(DirectX::XMFLOAT3 newScale)
 
 void Transform::SetPitchYawRoll(float p, float y, float r)
 {
-	pitchYawRoll = XMFLOAT3(p, y, r);
-	worldMatrixHasChanged = true;
+	XMFLOAT3 input(p, y, r);
+
+	// Other function does the same thing, so just call it to prevent code duplication
+	SetPitchYawRoll(input);
 }
 
 void Transform::SetPitchYawRoll(DirectX::XMFLOAT3 newPitchYawRoll)
 {
 	pitchYawRoll = newPitchYawRoll;
 	worldMatrixHasChanged = true;
+	rotationHasChanged = true;
 }
 
 void Transform::SetTranslation(float x, float y, float z)
 {
-	translation = XMFLOAT3(x, y, z);
-	worldMatrixHasChanged = true;
+	XMFLOAT3 input(x, y, z);
+	
+	// Other function does the same thing, so just call it to prevent code duplication
+	SetTranslation(input);
 }
 
 void Transform::SetTranslation(DirectX::XMFLOAT3 newTranslation)
@@ -58,12 +69,8 @@ void Transform::Scale(float x, float y, float z)
 {
 	XMFLOAT3 input(x, y, z);
 
-	XMVECTOR original = XMLoadFloat3(&scale);
-	XMVECTOR newScale = XMLoadFloat3(&input);
-
-	XMStoreFloat3(&scale, XMVectorAdd(original, newScale));
-
-	worldMatrixHasChanged = true;
+	// Other function does the same thing, so just call it to prevent code duplication
+	Scale(input);
 }
 
 void Transform::Scale(DirectX::XMFLOAT3 input)
@@ -80,12 +87,8 @@ void Transform::Rotate(float p, float y, float r)
 {
 	XMFLOAT3 input(p, y, r);
 
-	XMVECTOR original = XMLoadFloat3(&pitchYawRoll);
-	XMVECTOR newRotation = XMLoadFloat3(&input);
-
-	XMStoreFloat3(&pitchYawRoll, XMVectorAdd(original, newRotation));
-
-	worldMatrixHasChanged = true;
+	// Other function does the same thing, so just call it to prevent code duplication
+	Rotate(input);
 }
 
 void Transform::Rotate(DirectX::XMFLOAT3 input)
@@ -96,18 +99,15 @@ void Transform::Rotate(DirectX::XMFLOAT3 input)
 	XMStoreFloat3(&pitchYawRoll, XMVectorAdd(original, newRotation));
 
 	worldMatrixHasChanged = true;
+	rotationHasChanged = true;
 }
 
 void Transform::MoveAbsolute(float x, float y, float z)
 {
 	XMFLOAT3 input(x, y, z);
 
-	XMVECTOR original = XMLoadFloat3(&translation);
-	XMVECTOR newTranslation = XMLoadFloat3(&input);
-
-	XMStoreFloat3(&translation, XMVectorAdd(original, newTranslation));
-
-	worldMatrixHasChanged = true;
+	// Other function does the same thing, so just call it to prevent code duplication
+	MoveAbsolute(input);
 }
 
 void Transform::MoveAbsolute(DirectX::XMFLOAT3 input)
@@ -116,6 +116,28 @@ void Transform::MoveAbsolute(DirectX::XMFLOAT3 input)
 	XMVECTOR newTranslation = XMLoadFloat3(&input);
 
 	XMStoreFloat3(&translation, XMVectorAdd(original, newTranslation));
+
+	worldMatrixHasChanged = true;
+}
+
+void Transform::MoveRelative(float x, float y, float z)
+{
+	XMFLOAT3 offset(x, y, z);
+	
+	// Other function does the same thing, so just call it to prevent code duplication
+	MoveRelative(offset);
+}
+
+void Transform::MoveRelative(DirectX::XMFLOAT3 offset)
+{
+	// Create a quaternion representing the current rotation
+	XMVECTOR rotationQuaternion = XMQuaternionRotationRollPitchYawFromVector(XMLoadFloat3(&pitchYawRoll));
+
+	// Load XMVECTOR from offset XMFLOAT3, rotate it by the quaternion, and add the original translation
+	XMVECTOR tr = XMVectorAdd(XMLoadFloat3(&translation), XMVector3Rotate(XMLoadFloat3(&offset), rotationQuaternion));
+
+	// Store new value into translation
+	XMStoreFloat3(&translation, tr);
 
 	worldMatrixHasChanged = true;
 }
@@ -133,6 +155,36 @@ DirectX::XMFLOAT3 Transform::GetPitchYawRoll()
 DirectX::XMFLOAT3 Transform::GetTranslation()
 {
 	return translation;
+}
+
+DirectX::XMFLOAT3 Transform::GetRight()
+{
+	if (rotationHasChanged)
+	{
+		RecalculateDirectionVectors();
+	}
+
+	return right;
+}
+
+DirectX::XMFLOAT3 Transform::GetUp()
+{
+	if (rotationHasChanged)
+	{
+		RecalculateDirectionVectors();
+	}
+
+	return up;
+}
+
+DirectX::XMFLOAT3 Transform::GetForward()
+{
+	if (rotationHasChanged)
+	{
+		RecalculateDirectionVectors();
+	}
+
+	return forward;
 }
 
 DirectX::XMFLOAT4X4 Transform::GetWorldMatrix()
@@ -162,4 +214,27 @@ DirectX::XMFLOAT4X4 Transform::GetWorldMatrix()
 	}
 
 	return world;
+}
+
+void Transform::RecalculateDirectionVectors()
+{
+	// Reset vectors to world right, up, and forward
+	right = XMFLOAT3(1.0f, 0.0f, 0.0f);
+	up = XMFLOAT3(0.0f, 1.0f, 0.0f);
+	forward = XMFLOAT3(0.0f, 0.0f, 1.0f);
+
+	// Create a quaternion representing the current rotation
+	XMVECTOR rotationQuaternion = XMQuaternionRotationRollPitchYawFromVector(XMLoadFloat3(&pitchYawRoll));
+
+	// Load XMVECTORs from XMFLOAT3s, then rotate those by the quaternion
+	XMVECTOR r = XMVector3Rotate(XMLoadFloat3(&right), rotationQuaternion);
+	XMVECTOR u = XMVector3Rotate(XMLoadFloat3(&up), rotationQuaternion);
+	XMVECTOR f = XMVector3Rotate(XMLoadFloat3(&forward), rotationQuaternion);
+
+	// Store new values into original XMFLOAT3s
+	XMStoreFloat3(&right, r);
+	XMStoreFloat3(&up, u);
+	XMStoreFloat3(&forward, f);
+
+	rotationHasChanged = false;
 }

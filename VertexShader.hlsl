@@ -36,6 +36,8 @@ cbuffer ExternalData : register(b0)
 {
     float4 colorTint;
     matrix world;
+    matrix projection;
+    matrix view;
 }
 
 // --------------------------------------------------------
@@ -49,6 +51,10 @@ VertexToPixel main( VertexShaderInput input )
 {
 	// Set up output struct
 	VertexToPixel output;
+	
+	// Create a WPV (world, projection, view) matrix by combining the three matrices passed to the constant buffer
+	// Because our C++ matrices are left-handed and HLSL matrices are right-handed, multiply them in the opposite order (VPW)
+    matrix wpv = mul(projection, mul(view, world));
 
 	// Here we're essentially passing the input position directly through to the next
 	// stage (rasterizer), though it needs to be a 4-component vector now.  
@@ -58,7 +64,8 @@ VertexToPixel main( VertexShaderInput input )
 	// - Each of these components is then automatically divided by the W component, 
 	//   which we're leaving at 1.0 for now (this is more useful when dealing with 
 	//   a perspective projection matrix, which we'll get to in the future).
-    output.screenPosition = mul(world, float4(input.localPosition, 1.0f));
+	
+    output.screenPosition = mul(wpv, float4(input.localPosition, 1.0f));
 
 	// Pass the color through 
 	// - The values will be interpolated per-pixel by the rasterizer

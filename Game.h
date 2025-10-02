@@ -3,6 +3,7 @@
 #include "Mesh.h"
 #include "BufferStructs.h"
 #include "GameEntity.h"
+#include "Camera.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -29,17 +30,22 @@ private:
 	void LoadShaders();
 	void CreateGeometry();
 	void InitializeConstantBuffer();
+	void CreateStartingCameras();
 
 	// Done in Update()
+	void UpdateCameras(float deltaTime);
 	void StartImGuiUpdate(float deltaTime);
 	void BuildCustomUI(float deltaTime);
 	
 	// Done in Draw()
 	void FrameStart();
 	void DrawAllGameEntities();
-	void SendDataToConstantBuffer(DirectX::XMFLOAT4X4 worldMatrix);
+	void SendDataToConstantBuffer(DirectX::XMFLOAT4X4 worldMatrix, DirectX::XMFLOAT4X4 projectionMatrix, DirectX::XMFLOAT4X4 viewMatrix);
 	void RenderImGui();
 	void FrameEnd();
+
+	// Done in OnResize()
+	void UpdateAllCameraProjectionMatrices(float aspectRatio);
 
 	// Values that can be changed through ImGui
 	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
@@ -62,5 +68,8 @@ private:
 	std::vector<std::shared_ptr<Mesh>> meshes;
 	// GameEntities
 	std::vector<std::shared_ptr<GameEntity>> gameEntities;
+	// Cameras
+	std::vector<std::shared_ptr<Camera>> cameras;
+	int currentCameraIndex = 0;
 };
 
