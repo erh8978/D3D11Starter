@@ -13,6 +13,7 @@ class Mesh
 {
 public:
 	Mesh(Vertex* vertices, unsigned int* indices, unsigned int vertexCount, unsigned int indexCount, std::string name = "Unnamed Mesh");
+	Mesh(const char* meshPath);
 	~Mesh();
 
 	void Draw();

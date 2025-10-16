@@ -28,7 +28,9 @@ private:
 
 	// Initialization helper methods - feel free to customize, combine, remove, etc.
 	void LoadShaders();
-	void CreateGeometry();
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> LoadVertexShader(const WCHAR* shaderPath);
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> LoadPixelShader(const WCHAR* shaderPath);
+	void CreateGameEntities();
 	void InitializeConstantBuffer();
 	void CreateStartingCameras();
 
@@ -40,7 +42,7 @@ private:
 	// Done in Draw()
 	void FrameStart();
 	void DrawAllGameEntities();
-	void SendDataToConstantBuffer(DirectX::XMFLOAT4X4 worldMatrix, DirectX::XMFLOAT4X4 projectionMatrix, DirectX::XMFLOAT4X4 viewMatrix);
+	void SendDataToConstantBuffer(DirectX::XMFLOAT4 colorTint, DirectX::XMFLOAT4X4 worldMatrix, DirectX::XMFLOAT4X4 projectionMatrix, DirectX::XMFLOAT4X4 viewMatrix);
 	void RenderImGui();
 	void FrameEnd();
 
@@ -50,7 +52,6 @@ private:
 	// Values that can be changed through ImGui
 	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
 	bool showImGuiDemoWindow = false;
-	DirectX::XMFLOAT4 colorTint = DirectX::XMFLOAT4(0.8f, 0.8f, 0.8f, 1.0f);
 	VertexShaderData vsData; // Struct that will be passed to GPU via constBuffer
 
 	// Note the usage of ComPtr below
@@ -59,8 +60,6 @@ private:
 	//  - More info here: https://github.com/Microsoft/DirectXTK/wiki/ComPtr
 
 	// Shaders and shader-related constructs
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader;
-	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader;
 	Microsoft::WRL::ComPtr<ID3D11InputLayout> inputLayout;
 	Microsoft::WRL::ComPtr<ID3D11Buffer> constBuffer;
 

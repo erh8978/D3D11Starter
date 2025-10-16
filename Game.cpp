@@ -8,6 +8,7 @@
 #include "imgui_impl_dx11.h"
 #include "imgui_impl_win32.h"
 #include "BufferStructs.h"
+#include "Material.h"
 
 #include <DirectXMath.h>
 #include <memory>
@@ -40,7 +41,7 @@ Game::Game()
 	// geometry to draw and some simple camera matrices.
 	//  - You'll be expanding and/or replacing these later
 	LoadShaders();
-	CreateGeometry();
+	CreateGameEntities();
 	InitializeConstantBuffer();
 	CreateStartingCameras();
 
@@ -58,12 +59,6 @@ Game::Game()
 		// the vertex buffer. For this course, all of your vertices will probably
 		// have the same layout, so we can just set this once at startup.
 		Graphics::Context->IASetInputLayout(inputLayout.Get());
-
-		// Set the active vertex and pixel shaders
-		//  - Once you start applying different shaders to different objects,
-		//    these calls will need to happen multiple times per frame
-		Graphics::Context->VSSetShader(vertexShader.Get(), 0, 0);
-		Graphics::Context->PSSetShader(pixelShader.Get(), 0, 0);
 	}
 }
 
@@ -111,19 +106,6 @@ void Game::LoadShaders()
 		// - Note the "L" before the string - this tells the compiler the string uses wide characters
 		D3DReadFileToBlob(FixPath(L"PixelShader.cso").c_str(), &pixelShaderBlob);
 		D3DReadFileToBlob(FixPath(L"VertexShader.cso").c_str(), &vertexShaderBlob);
-
-		// Create the actual Direct3D shaders on the GPU
-		Graphics::Device->CreatePixelShader(
-			pixelShaderBlob->GetBufferPointer(),	// Pointer to blob's contents
-			pixelShaderBlob->GetBufferSize(),		// How big is that data?
-			0,										// No classes in this shader
-			pixelShader.GetAddressOf());			// Address of the ID3D11PixelShader pointer
-
-		Graphics::Device->CreateVertexShader(
-			vertexShaderBlob->GetBufferPointer(),	// Get a pointer to the blob's contents
-			vertexShaderBlob->GetBufferSize(),		// How big is that data?
-			0,										// No classes in this shader
-			vertexShader.GetAddressOf());			// The address of the ID3D11VertexShader pointer
 	}
 
 	// Create an input layout 
@@ -155,119 +137,95 @@ void Game::LoadShaders()
 }
 
 
+// --------------------------------------------------
+// Loads a single vertex shader from a given filepath
+// --------------------------------------------------
+Microsoft::WRL::ComPtr<ID3D11VertexShader> Game::LoadVertexShader(const WCHAR* shaderPath)
+{
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader;
+
+	// Load data into a BLOB (Binary Large OBject)
+	ID3DBlob* vertexShaderBlob;
+	D3DReadFileToBlob(FixPath(shaderPath).c_str(), &vertexShaderBlob);
+
+	// Create the actual shader in GPU memory
+	Graphics::Device->CreateVertexShader(
+		vertexShaderBlob->GetBufferPointer(),	// Get a pointer to the blob's contents
+		vertexShaderBlob->GetBufferSize(),		// How big is that data?
+		0,										// No classes in this shader
+		vertexShader.GetAddressOf());			// The address of the ID3D11VertexShader pointer
+
+	return vertexShader;
+}
+
+
+// -------------------------------------------------
+// Loads a single pixel shader from a given filepath
+// -------------------------------------------------
+Microsoft::WRL::ComPtr<ID3D11PixelShader> Game::LoadPixelShader(const WCHAR* shaderPath)
+{
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader;
+
+	// Load data into a BLOB (Binary Large OBject)
+	ID3DBlob* pixelShaderBlob;
+	D3DReadFileToBlob(FixPath(shaderPath).c_str(), &pixelShaderBlob);
+
+	// Create the actual shader in GPU memory
+	Graphics::Device->CreatePixelShader(
+		pixelShaderBlob->GetBufferPointer(),	// Pointer to blob's contents
+		pixelShaderBlob->GetBufferSize(),		// How big is that data?
+		0,										// No classes in this shader
+		pixelShader.GetAddressOf());			// Address of the ID3D11PixelShader pointer
+
+	return pixelShader;
+}
+
+
 // --------------------------------------------------------
 // Creates the geometry we're going to draw
 // --------------------------------------------------------
-void Game::CreateGeometry()
+void Game::CreateGameEntities()
 {
-	// Create some temporary variables to represent colors
-	// - Not necessary, just makes things more readable
-	XMFLOAT4 red(1.0f, 0.0f, 0.0f, 1.0f);
-	XMFLOAT4 orange(1.0f, 0.5f, 0.0f, 1.0f);
-	XMFLOAT4 yellow(1.0f, 1.0f, 0.0f, 1.0f);
-	XMFLOAT4 green(0.0f, 1.0f, 0.0f, 1.0f);
-	XMFLOAT4 blue(0.0f, 0.0f, 1.0f, 1.0f);
-	XMFLOAT4 purple(1.0f, 0.0f, 1.0f, 1.0f);
-	XMFLOAT4 black(0.0f, 0.0f, 0.0f, 1.0f);
-	XMFLOAT4 darkGray(0.33f, 0.33f, 0.33f, 1.0f);
-	XMFLOAT4 lightGray(0.66f, 0.66f, 0.66f, 1.0f);
-	XMFLOAT4 white(1.0f, 1.0f, 1.0f, 1.0f);
+	// Load vertex & pixel shaders - just one of each for now
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader1 = LoadVertexShader(L"VertexShader.cso");
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader1 = LoadPixelShader(L"PixelShader.cso");
 
-	// Create three unique Meshes
-	// Start with a smaller version of the original triangle.
-	// - It'll be a bit smaller than it was originally,
-	//   to make more room on the screen for the other triangles.
-	// - Note: Since we don't have a camera or really any concept of
-	//    a "3d world" yet, we're simply describing positions within the
-	//    bounds of how the rasterizer sees our screen: [-1 to +1] on X and Y
-	// - This means (0,0) is at the very center of the screen.
-	// - These are known as "Normalized Device Coordinates" or "Homogeneous 
-	//    Screen Coords", which are ways to describe a position without
-	//    knowing the exact size (in pixels) of the image/window/etc.  
-	// - Long story short: Resizing the window also resizes the triangle,
-	//    since we're describing the triangle in terms of the window itself
+	// Material 1
+	XMFLOAT4 redTint(1.0f, 0.5f, 0.5f, 1.0f);
+	std::shared_ptr<Material> material1 = std::make_shared<Material>(redTint, vertexShader1, pixelShader1);;
+
+	// Material 2
+	XMFLOAT4 greenTint(0.5f, 1.0f, 0.5f, 1.0f);
+	std::shared_ptr<Material> material2 = std::make_shared<Material>(greenTint, vertexShader1, pixelShader1);
+
+	// Material 3
+	XMFLOAT4 blueTint(0.5f, 0.5f, 1.0f, 1.0f);
+	std::shared_ptr<Material> material3 = std::make_shared<Material>(blueTint, vertexShader1, pixelShader1);
+
+	// Create a Mesh for each .obj file, and add them to meshes
 	{
-		const unsigned int triangleVertexCount = 3;
-
-		Vertex triangleVertices[] = 
-		{
-			{ XMFLOAT3(+0.0f, +0.25f, +0.0f), red }, // Top
-			{ XMFLOAT3(+0.25f, -0.25f, +0.0f), blue }, // Right
-			{ XMFLOAT3(-0.25f, -0.25f, +0.0f), green }, // Left
-		};
-
-		const unsigned int triangleIndexCount = 3;
-
-		// Set up indices, which tell us which vertices to use and in which order
-		// - This is redundant for just 3 vertices, but necessary for how the Mesh class is designed
-		unsigned int triangleIndices[] = {
-			0, 1, 2
-		};
-
-		meshes.push_back(std::make_shared<Mesh>(triangleVertices, triangleIndices, triangleVertexCount, triangleIndexCount, "Triangle"));
-	}
-
-	// Second Mesh: Two triangles, forming a square
-	{
-		const unsigned int squareVertexCount = 4;
-
-		Vertex squareVertices[] =
-		{
-			{ XMFLOAT3(-0.25f, +0.25f, +0.0f), black }, // Top left
-			{ XMFLOAT3(-0.25f, -0.25f, +0.0f), darkGray }, // Bottom left
-			{ XMFLOAT3(+0.25f, +0.25f, +0.0f), lightGray }, // Top right
-			{ XMFLOAT3(+0.25f, -0.25f, +0.0f), white} // Bottom right
-		};
-
-		const unsigned int squareIndexCount = 6;
-
-		// Set up indices, which tell us which vertices to use and in which order
-		unsigned int squareIndices[] = {
-			0, 3, 1,
-			0, 2, 3
-		};
-
-		meshes.push_back(std::make_shared<Mesh>(squareVertices, squareIndices, squareVertexCount, squareIndexCount, "Square"));
-	}
-
-	// Third mesh: Hexagon
-	{
-		const unsigned int hexagonVertexCount = 7;
-	
-		Vertex hexagonVertices[] = 
-		{
-			// ADD 0.5
-			{ XMFLOAT3(+0.0f, +0.0f, 0.0f), white }, // Center point
-			{ XMFLOAT3(+0.0f, -0.25f, 0.0f), red }, // Bottom point
-			{ XMFLOAT3(-0.1f, -0.1f, 0.0f), orange }, // Bottom-left point
-			{ XMFLOAT3(-0.1f, +0.1f, 0.0f), yellow }, // Top-left point
-			{ XMFLOAT3(+0.0f, +0.25f, 0.0f), green }, // Top point
-			{ XMFLOAT3(+0.1f, +0.1f, 0.0f), blue }, // Top-right point
-			{ XMFLOAT3(+0.1f, -0.1f, 0.0f), purple } // Bottom-right point
-		};
-
-		const unsigned int hexagonIndexCount = 18;
-
-		// Arranged vertically for clarity
-		unsigned int hexagonIndices[] = {
-			0, 1, 2,
-			0, 2, 3,
-			0, 3, 4,
-			0, 4, 5,
-			0, 5, 6,
-			0, 6, 1
-		};
-
-		meshes.push_back(std::make_shared<Mesh>(hexagonVertices, hexagonIndices, hexagonVertexCount, hexagonIndexCount, "Hexagon"));
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/cube.obj").c_str())); // Cube
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/cylinder.obj").c_str())); // Cylinder
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/helix.obj").c_str())); // Helix
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/quad.obj").c_str())); // Quad
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/quad_double_sided.obj").c_str())); // Double-Sided Quad
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/sphere.obj").c_str())); // Sphere
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/torus.obj").c_str())); // Torus
 	}
 
 	// Create 5 GameEntities, with some sharing the same Mesh
 	{
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0])); // Triangle 1
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0])); // Triangle 2
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1])); // Square 1
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2])); // Hexagon 1
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2])); // Hexagon 2
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], material1)); // Helix 1
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], material1)); // Helix 2
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], material2)); // Cube 1
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], material3)); // Torus 1
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], material3)); // Torus 2
+	}
+
+	// Make the entities smaller, so they aren't huge (for now)
+	for (unsigned int i = 0; i < gameEntities.size(); i++)
+	{
+		gameEntities[i]->GetTransform()->SetScale(0.3f, 0.3f, 0.3f);
 	}
 }
 
@@ -286,6 +244,7 @@ void Game::InitializeConstantBuffer()
 	Graphics::Device->CreateBuffer(&constBufferDescription, 0, constBuffer.GetAddressOf());
 }
 
+
 // -----------------------------------------------
 // Create two cameras for the user to swap between
 // -----------------------------------------------
@@ -296,6 +255,7 @@ void Game::CreateStartingCameras()
 	// Second camera: further back from the starting scene, narrower FOV
 	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(1.0f, 0.0f, -10.0f), Window::AspectRatio(), 30.0f));
 }
+
 
 // --------------------------------------------------------
 // Update your game here - user input, move objects, AI, etc.
@@ -319,6 +279,7 @@ void Game::Update(float deltaTime, float totalTime)
 
 	BuildCustomUI(deltaTime);
 }
+
 
 // ------------------------------------------------
 // Calls Update() on each camera that needs updated
@@ -484,15 +445,6 @@ void Game::BuildCustomUI(float deltaTime)
 			ImGui::TreePop();
 		}
 
-		// Dropdown for colorTint and offset
-		if (ImGui::TreeNode("Color Tint"))
-		{
-			ImGui::ColorEdit4("Color Tint", &colorTint.x);
-
-			// Has to be done at the end of each tree node!
-			ImGui::TreePop();
-		}
-
 		if (ImGui::Button("Show/Hide ImGui Demo Window"))
 		{
 			showImGuiDemoWindow = !showImGuiDemoWindow;
@@ -546,8 +498,13 @@ void Game::DrawAllGameEntities()
 {
 	for (unsigned int i = 0; i < gameEntities.size(); i++)
 	{
+		// Set shaders from the Material
+		Graphics::Context->VSSetShader(gameEntities[i]->GetMaterial()->GetVertexShader().Get(), 0, 0);
+		Graphics::Context->PSSetShader(gameEntities[i]->GetMaterial()->GetPixelShader().Get(), 0, 0);
+
 		// Send transform and color data to the constant buffer
 		SendDataToConstantBuffer(
+			gameEntities[i]->GetMaterial()->GetColorTint(),
 			gameEntities[i]->GetTransform()->GetWorldMatrix(),
 			cameras[currentCameraIndex]->GetProjectionMatrix(),
 			cameras[currentCameraIndex]->GetViewMatrix());
@@ -557,10 +514,11 @@ void Game::DrawAllGameEntities()
 	}
 }
 
+
 // -----------------------------------------------------------------
 // Sends colorTint and offset data to the constant buffer on the GPU
 // -----------------------------------------------------------------
-void Game::SendDataToConstantBuffer(XMFLOAT4X4 worldMatrix, XMFLOAT4X4 projectionMatrix, XMFLOAT4X4 viewMatrix)
+void Game::SendDataToConstantBuffer(XMFLOAT4 colorTint, XMFLOAT4X4 worldMatrix, XMFLOAT4X4 projectionMatrix, XMFLOAT4X4 viewMatrix)
 {
 	// Prepare vsData
 	vsData.colorTint = colorTint;
@@ -621,6 +579,7 @@ void Game::OnResize()
 {
 	UpdateAllCameraProjectionMatrices(Window::AspectRatio());
 }
+
 
 // ----------------------------------------------------------------------
 // When the aspect ratio of the screen is changed, send it to all cameras
