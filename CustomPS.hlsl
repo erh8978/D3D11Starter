@@ -1,4 +1,4 @@
-// Basic pixel shader. Just returns a color tint passed via constant buffer.
+// Custom pixel shader.
 
 // Struct representing the data we expect to receive from earlier pipeline stages
 // - Should match the output of our corresponding vertex shader
@@ -12,15 +12,20 @@ struct VertexToPixel
 	//  |   Name          Semantic
 	//  |    |                |
 	//  v    v                v
-	float4 screenPosition	: SV_POSITION;	// XYZW position (System Value Position)
-    float2 UV				: TEXCOORD;		// UV coordinates
-    float3 Normal			: NORMAL;		// Surface normal
+    float4 screenPosition : SV_POSITION; // XYZW position (System Value Position)
+    float2 UV : TEXCOORD; // UV coordinates
+    float3 Normal : NORMAL; // Surface normal
 };
 
 cbuffer ExternalData : register(b0)
 {
     float4 colorTint;
     float totalTime;
+}
+
+float random(float2 s)
+{
+    return frac(sin(dot(s, float2(12.9898, 78.233))) * 43758.5453123);
 }
 
 // --------------------------------------------------------
@@ -34,9 +39,9 @@ cbuffer ExternalData : register(b0)
 // --------------------------------------------------------
 float4 main(VertexToPixel input) : SV_TARGET
 {
-	// Just return the input color
-	// - This color (like most values passing through the rasterizer) is 
-	//   interpolated for each pixel between the corresponding vertices 
-	//   of the triangle we're rendering
-	return colorTint;
+    float red = sin(input.Normal.r) * sin(totalTime) / 2 + random(input.UV) / 2;
+    float green = cos(input.Normal.g) * cos(totalTime) / 2 + random(input.UV) / 2;
+    float blue = (red + green) / 2 + 0.5;
+    
+    return float4(red, green, blue, 1);
 }

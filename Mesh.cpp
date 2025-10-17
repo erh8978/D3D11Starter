@@ -72,7 +72,7 @@ Mesh::Mesh(Vertex* vertices, unsigned int* indices, unsigned int vertexCount, un
 	}
 }
 
-Mesh::Mesh(const char* meshPath)
+Mesh::Mesh(const char* meshPath, std::string name)
 {
 	// Author: Chris Cascioli
 // Purpose: Basic .OBJ 3D model loading, supporting positions, uvs and normals
@@ -333,7 +333,7 @@ Mesh::Mesh(const char* meshPath)
 	indexBufferCount = indexCounter;
 
 	// Store mesh name
-	meshName = meshPath;
+	meshName = name;
 
 	// Create a VERTEX BUFFER
 	// - This holds the vertex data of triangles for a single object

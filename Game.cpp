@@ -42,7 +42,7 @@ Game::Game()
 	//  - You'll be expanding and/or replacing these later
 	LoadShaders();
 	CreateGameEntities();
-	InitializeConstantBuffer();
+	InitializeConstantBuffers();
 	CreateStartingCameras();
 
 	// Set initial graphics API state
@@ -114,22 +114,27 @@ void Game::LoadShaders()
 	//  - Doing this NOW because it requires a vertex shader's byte code to verify against!
 	//  - Luckily, we already have that loaded (the vertex shader blob above)
 	{
-		D3D11_INPUT_ELEMENT_DESC inputElements[2] = {};
+		D3D11_INPUT_ELEMENT_DESC inputElements[3] = {};
 
 		// Set up the first element - a position, which is 3 float values
 		inputElements[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;				// Most formats are described as color channels; really it just means "Three 32-bit floats"
 		inputElements[0].SemanticName = "POSITION";							// This is "POSITION" - needs to match the semantics in our vertex shader input!
 		inputElements[0].AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;	// How far into the vertex is this?  Assume it's after the previous element
 
-		// Set up the second element - a color, which is 4 more float values
-		inputElements[1].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;			// 4x 32-bit floats
-		inputElements[1].SemanticName = "COLOR";							// Match our vertex shader input!
+		// Set up the second element - a UV coordinate, which is 2 more float values
+		inputElements[1].Format = DXGI_FORMAT_R32G32_FLOAT;					// 2x 32-bit floats
+		inputElements[1].SemanticName = "TEXCOORD";							// Match our vertex shader input!
 		inputElements[1].AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;	// After the previous element
+
+		// Set up the third element - a surface normal, which is 3 more float values
+		inputElements[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;				// 3x 32-bit floats
+		inputElements[2].SemanticName = "NORMAL";							// Once again, match the vertex shader input!
+		inputElements[2].AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;  // After the previous element
 
 		// Create the input layout, verifying our description against actual shader code
 		Graphics::Device->CreateInputLayout(
 			inputElements,							// An array of descriptions
-			2,										// How many elements in that array?
+			3,										// How many elements in that array?
 			vertexShaderBlob->GetBufferPointer(),	// Pointer to the code of a shader that uses this layout
 			vertexShaderBlob->GetBufferSize(),		// Size of the shader code that uses this layout
 			inputLayout.GetAddressOf());			// Address of the resulting ID3D11InputLayout pointer
@@ -187,39 +192,98 @@ Microsoft::WRL::ComPtr<ID3D11PixelShader> Game::LoadPixelShader(const WCHAR* sha
 void Game::CreateGameEntities()
 {
 	// Load vertex & pixel shaders - just one of each for now
-	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader1 = LoadVertexShader(L"VertexShader.cso");
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader1 = LoadPixelShader(L"PixelShader.cso");
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader = LoadVertexShader(L"VertexShader.cso");
 
-	// Material 1
-	XMFLOAT4 redTint(1.0f, 0.5f, 0.5f, 1.0f);
-	std::shared_ptr<Material> material1 = std::make_shared<Material>(redTint, vertexShader1, pixelShader1);;
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> basicPixelShader = LoadPixelShader(L"PixelShader.cso");
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> debugUVsPixelShader = LoadPixelShader(L"DebugUVsPS.cso");
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> debugNormalsPixelShader = LoadPixelShader(L"DebugNormalsPS.cso");
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> customPixelShader = LoadPixelShader(L"CustomPS.cso");
 
-	// Material 2
-	XMFLOAT4 greenTint(0.5f, 1.0f, 0.5f, 1.0f);
-	std::shared_ptr<Material> material2 = std::make_shared<Material>(greenTint, vertexShader1, pixelShader1);
+	// Create some colorTints
+	XMFLOAT4 blackTint(0.0f, 0.0f, 0.0f, 1.0f);
+	XMFLOAT4 whiteTint(1.0f, 1.0f, 1.0f, 1.0f);
+	XMFLOAT4 redTint(1.0f, 0.2f, 0.2f, 1.0f);
+	XMFLOAT4 greenTint(0.2f, 1.0f, 0.2f, 1.0f);
+	XMFLOAT4 blueTint(0.2f, 0.2f, 1.0f, 1.0f);
 
-	// Material 3
-	XMFLOAT4 blueTint(0.5f, 0.5f, 1.0f, 1.0f);
-	std::shared_ptr<Material> material3 = std::make_shared<Material>(blueTint, vertexShader1, pixelShader1);
+	// Material 1 - Color tint shader, red
+	std::shared_ptr<Material> basicRedMaterial = std::make_shared<Material>(redTint, vertexShader, basicPixelShader);
+
+	// Material 2 - Color tint shader, green
+	std::shared_ptr<Material> basicGreenMaterial = std::make_shared<Material>(greenTint, vertexShader, basicPixelShader);;
+
+	// Material 3 - Color tint shader, blue
+	std::shared_ptr<Material> basicBlueMaterial = std::make_shared<Material>(blueTint, vertexShader, basicPixelShader);;
+
+	// Material 4 - UVs shader
+	std::shared_ptr<Material> debugUVsMaterial = std::make_shared<Material>(whiteTint, vertexShader, debugUVsPixelShader);
+
+	// Material 5 - Normals shader
+	std::shared_ptr<Material> debugNormalsMaterial = std::make_shared<Material>(whiteTint, vertexShader, debugNormalsPixelShader);
+
+	// Material 6 - Custom shader
+	std::shared_ptr<Material> customMaterial = std::make_shared<Material>(blackTint, vertexShader, customPixelShader);
 
 	// Create a Mesh for each .obj file, and add them to meshes
 	{
-		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/cube.obj").c_str())); // Cube
-		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/cylinder.obj").c_str())); // Cylinder
-		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/helix.obj").c_str())); // Helix
-		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/quad.obj").c_str())); // Quad
-		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/quad_double_sided.obj").c_str())); // Double-Sided Quad
-		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/sphere.obj").c_str())); // Sphere
-		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/torus.obj").c_str())); // Torus
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/cube.obj").c_str(), "Cube")); // Cube
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/cylinder.obj").c_str(), "Cylinder")); // Cylinder
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/helix.obj").c_str(), "Helix")); // Helix
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/sphere.obj").c_str(), "Sphere")); // Sphere
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/torus.obj").c_str(), "Torus")); // Torus
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/quad.obj").c_str(), "Quad")); // Quad
+		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/quad_double_sided.obj").c_str(), "Double-Sided Quad")); // Double-Sided Quad
 	}
 
-	// Create 5 GameEntities, with some sharing the same Mesh
+	// Create 21 GameEntities, with some sharing the same Mesh
 	{
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], material1)); // Helix 1
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], material1)); // Helix 2
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], material2)); // Cube 1
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], material3)); // Torus 1
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], material3)); // Torus 2
+		// Row 1 - debugNormalsMaterial
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], debugNormalsMaterial)); // Cube
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1], debugNormalsMaterial)); // Cylinder
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], debugNormalsMaterial)); // Helix
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[3], debugNormalsMaterial)); // Sphere
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[4], debugNormalsMaterial)); // Torus
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[5], debugNormalsMaterial)); // Quad
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], debugNormalsMaterial)); // Double-Sided Quad
+		gameEntities[0]->GetTransform()->SetTranslation(-3.0f, 1.0f, 0.0f);
+		gameEntities[1]->GetTransform()->SetTranslation(-2.0f, 1.0f, 0.0f);
+		gameEntities[2]->GetTransform()->SetTranslation(-1.0f, 1.0f, 0.0f);
+		gameEntities[3]->GetTransform()->SetTranslation(0.0f, 1.0f, 0.0f);
+		gameEntities[4]->GetTransform()->SetTranslation(1.0f, 1.0f, 0.0f);
+		gameEntities[5]->GetTransform()->SetTranslation(2.0f, 1.0f, 0.0f);
+		gameEntities[6]->GetTransform()->SetTranslation(3.0f, 1.0f, 0.0f);
+
+		// Row 2 - debugUVsMaterial
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], debugUVsMaterial)); // Cube
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1], debugUVsMaterial)); // Cylinder
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], debugUVsMaterial)); // Helix
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[3], debugUVsMaterial)); // Sphere
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[4], debugUVsMaterial)); // Torus
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[5], debugUVsMaterial)); // Quad
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], debugUVsMaterial)); // Double-Sided Quad
+		gameEntities[7]->GetTransform()->SetTranslation(-3.0f, 0.0f, 0.0f);
+		gameEntities[8]->GetTransform()->SetTranslation(-2.0f, 0.0f, 0.0f);
+		gameEntities[9]->GetTransform()->SetTranslation(-1.0f, 0.0f, 0.0f);
+		gameEntities[10]->GetTransform()->SetTranslation(0.0f, 0.0f, 0.0f);
+		gameEntities[11]->GetTransform()->SetTranslation(1.0f, 0.0f, 0.0f);
+		gameEntities[12]->GetTransform()->SetTranslation(2.0f, 0.0f, 0.0f);
+		gameEntities[13]->GetTransform()->SetTranslation(3.0f, 0.0f, 0.0f);
+
+		// Row 3 - basicMaterial and customMaterial
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], basicRedMaterial)); // Cube
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1], basicGreenMaterial)); // Cylinder
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], basicBlueMaterial)); // Helix
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[3], customMaterial)); // Sphere
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[4], basicBlueMaterial)); // Torus
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[5], basicGreenMaterial)); // Quad
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], basicRedMaterial)); // Double-Sided Quad
+		gameEntities[14]->GetTransform()->SetTranslation(-3.0f, -1.0f, 0.0f);
+		gameEntities[15]->GetTransform()->SetTranslation(-2.0f, -1.0f, 0.0f);
+		gameEntities[16]->GetTransform()->SetTranslation(-1.0f, -1.0f, 0.0f);
+		gameEntities[17]->GetTransform()->SetTranslation(0.0f, -1.0f, 0.0f);
+		gameEntities[18]->GetTransform()->SetTranslation(1.0f, -1.0f, 0.0f);
+		gameEntities[19]->GetTransform()->SetTranslation(2.0f, -1.0f, 0.0f);
+		gameEntities[20]->GetTransform()->SetTranslation(3.0f, -1.0f, 0.0f);
 	}
 
 	// Make the entities smaller, so they aren't huge (for now)
@@ -233,15 +297,25 @@ void Game::CreateGameEntities()
 // -----------------------------------------------------------
 // Initialize a buffer on the GPU that our C++ code can change
 // -----------------------------------------------------------
-void Game::InitializeConstantBuffer()
+void Game::InitializeConstantBuffers()
 {
-	D3D11_BUFFER_DESC constBufferDescription = {}; // Initialize to all zeros
-	constBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	constBufferDescription.ByteWidth = (sizeof(VertexShaderData) + 15) / 16 * 16; // Must be a multiple of 16
-	constBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // We have to be able to write to this buffer from C++
-	constBufferDescription.Usage = D3D11_USAGE_DYNAMIC; // This buffer can change
+	// Vertex Shader
+	D3D11_BUFFER_DESC vsConstBufferDescription = {}; // Initialize to all zeros
+	vsConstBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	vsConstBufferDescription.ByteWidth = (sizeof(VertexShaderExternalData) + 15) / 16 * 16; // Must be a multiple of 16
+	vsConstBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // We have to be able to write to this buffer from C++
+	vsConstBufferDescription.Usage = D3D11_USAGE_DYNAMIC; // This buffer can change
 
-	Graphics::Device->CreateBuffer(&constBufferDescription, 0, constBuffer.GetAddressOf());
+	Graphics::Device->CreateBuffer(&vsConstBufferDescription, 0, vertexShaderConstantBuffer.GetAddressOf());
+
+	// Pixel Shader
+	D3D11_BUFFER_DESC psConstBufferDescription = {}; // Initialize to all zeros
+	psConstBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	psConstBufferDescription.ByteWidth = (sizeof(PixelShaderExternalData) + 15) / 16 * 16; // Must be a multiple of 16
+	psConstBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // We have to be able to write to this buffer from C++
+	psConstBufferDescription.Usage = D3D11_USAGE_DYNAMIC; // This buffer can change
+
+	Graphics::Device->CreateBuffer(&psConstBufferDescription, 0, pixelShaderConstantBuffer.GetAddressOf());
 }
 
 
@@ -251,7 +325,7 @@ void Game::InitializeConstantBuffer()
 void Game::CreateStartingCameras()
 {
 	// First camera: set back from starting scene, standard FOV
-	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 0.0f, -3.0f), Window::AspectRatio()));
+	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 0.0f, -5.0f), Window::AspectRatio()));
 	// Second camera: further back from the starting scene, narrower FOV
 	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(1.0f, 0.0f, -10.0f), Window::AspectRatio(), 30.0f));
 }
@@ -266,12 +340,10 @@ void Game::Update(float deltaTime, float totalTime)
 	if (Input::KeyDown(VK_ESCAPE))
 		Window::Quit();
 
-	gameEntities[0]->GetTransform()->SetTranslation(sinf(totalTime) * 0.5f, -0.7f, 0.5f); // Triangle 1
-	gameEntities[1]->GetTransform()->SetTranslation(sinf(totalTime) * -0.5f, 0.7f, -0.5f); // Triangle 2
-	gameEntities[1]->GetTransform()->SetPitchYawRoll(0, 0, XMConvertToRadians(180.0f)); // Triangle 2
-	gameEntities[2]->GetTransform()->SetTranslation(sinf(totalTime), cosf(totalTime), 10.0f); // Square 1
-	gameEntities[3]->GetTransform()->Rotate(0.0f, 0.0f, deltaTime * 0.1f); // Hexagon 1
-	gameEntities[4]->GetTransform()->Rotate(0.0f, 0.0f, deltaTime * -0.1f); // Hexagon 2
+	for (unsigned int i = 0; i < gameEntities.size(); i++)
+	{
+		gameEntities[i]->GetTransform()->Rotate(0.0f, 1.0f * deltaTime, 0.0f);
+	}
 
 	UpdateCameras(deltaTime);
 
@@ -331,6 +403,12 @@ void Game::BuildCustomUI(float deltaTime)
 {
 	{ // Any ImGui methods called between ImGui::Begin() and ImGui::End() will be placed in a new window.
 		ImGui::Begin("540 ImGui Window");
+
+		ImGui::Text("Camera Controls");
+		ImGui::Text("	W / S: Forwards / Backwards");
+		ImGui::Text("	A / D: Left / Right");
+		ImGui::Text("	Q / E: Down / Up");
+		ImGui::Text("	LMB + Drag: Rotate");
 
 		// ImGui provides a variable for framerate, so use that
 		float framerate = ImGui::GetIO().Framerate;
@@ -466,7 +544,7 @@ void Game::Draw(float deltaTime, float totalTime)
 	// DRAW geometry
 	// - These steps are generally repeated for EACH object you draw
 	// - Other Direct3D calls will also be necessary to do more complex things
-	DrawAllGameEntities();
+	DrawAllGameEntities(totalTime);
 
 	// Draw ImGui last, so it appears over everything else.
 	RenderImGui();
@@ -494,7 +572,7 @@ void Game::FrameStart()
 // ------------------------------------------------
 // Loops through the Meshes list and draws each one
 // ------------------------------------------------
-void Game::DrawAllGameEntities()
+void Game::DrawAllGameEntities(float totalTime)
 {
 	for (unsigned int i = 0; i < gameEntities.size(); i++)
 	{
@@ -507,7 +585,8 @@ void Game::DrawAllGameEntities()
 			gameEntities[i]->GetMaterial()->GetColorTint(),
 			gameEntities[i]->GetTransform()->GetWorldMatrix(),
 			cameras[currentCameraIndex]->GetProjectionMatrix(),
-			cameras[currentCameraIndex]->GetViewMatrix());
+			cameras[currentCameraIndex]->GetViewMatrix(),
+			totalTime);
 		
 		// Now that the shader has access to the correct world matrix, draw the entity's Mesh
 		gameEntities[i]->Draw();
@@ -518,25 +597,44 @@ void Game::DrawAllGameEntities()
 // -----------------------------------------------------------------
 // Sends colorTint and offset data to the constant buffer on the GPU
 // -----------------------------------------------------------------
-void Game::SendDataToConstantBuffer(XMFLOAT4 colorTint, XMFLOAT4X4 worldMatrix, XMFLOAT4X4 projectionMatrix, XMFLOAT4X4 viewMatrix)
+void Game::SendDataToConstantBuffer(XMFLOAT4 colorTint,
+	XMFLOAT4X4 worldMatrix,
+	XMFLOAT4X4 projectionMatrix,
+	XMFLOAT4X4 viewMatrix,
+	float totalTime)
 {
 	// Prepare vsData
-	vsData.colorTint = colorTint;
 	vsData.worldMatrix = worldMatrix;
 	vsData.projectionMatrix = projectionMatrix;
 	vsData.viewMatrix = viewMatrix;
 
-	D3D11_MAPPED_SUBRESOURCE mappedBuffer = {};
-	Graphics::Context->Map(constBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedBuffer);
+	D3D11_MAPPED_SUBRESOURCE mappedVSBuffer = {};
+	Graphics::Context->Map(vertexShaderConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedVSBuffer);
 
-	memcpy(mappedBuffer.pData, &vsData, sizeof(vsData));
+	memcpy(mappedVSBuffer.pData, &vsData, sizeof(vsData));
 
-	Graphics::Context->Unmap(constBuffer.Get(), 0);
+	Graphics::Context->Unmap(vertexShaderConstantBuffer.Get(), 0);
 
 	Graphics::Context->VSSetConstantBuffers(
 		0, // Which register to bind the buffer to? (b0)
 		1, // How many are we setting right now?
-		constBuffer.GetAddressOf()); // Array of buffers (or address of just one)
+		vertexShaderConstantBuffer.GetAddressOf()); // Array of buffers (or address of just one)
+
+	// Prepare psData
+	psData.colorTint = colorTint;
+	psData.totalTime = totalTime;
+
+	D3D11_MAPPED_SUBRESOURCE mappedPSBuffer = {};
+	Graphics::Context->Map(pixelShaderConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedPSBuffer);
+	
+	memcpy(mappedPSBuffer.pData, &psData, sizeof(psData));
+	
+	Graphics::Context->Unmap(pixelShaderConstantBuffer.Get(), 0);
+	
+	Graphics::Context->PSSetConstantBuffers(
+		0, // Which register to bind the buffer to? (b0)
+		1, // How many are we setting right now?
+	 	pixelShaderConstantBuffer.GetAddressOf()); // Array of buffers (or address of just one)
 }
 
 

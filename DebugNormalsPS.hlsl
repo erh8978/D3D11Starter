@@ -1,4 +1,4 @@
-// Basic pixel shader. Just returns a color tint passed via constant buffer.
+// Debug pixel shader. Returns color based on surface normals.
 
 // Struct representing the data we expect to receive from earlier pipeline stages
 // - Should match the output of our corresponding vertex shader
@@ -12,9 +12,9 @@ struct VertexToPixel
 	//  |   Name          Semantic
 	//  |    |                |
 	//  v    v                v
-	float4 screenPosition	: SV_POSITION;	// XYZW position (System Value Position)
-    float2 UV				: TEXCOORD;		// UV coordinates
-    float3 Normal			: NORMAL;		// Surface normal
+    float4 screenPosition : SV_POSITION; // XYZW position (System Value Position)
+    float2 UV : TEXCOORD; // UV coordinates
+    float3 Normal : NORMAL; // Surface normal
 };
 
 cbuffer ExternalData : register(b0)
@@ -34,9 +34,6 @@ cbuffer ExternalData : register(b0)
 // --------------------------------------------------------
 float4 main(VertexToPixel input) : SV_TARGET
 {
-	// Just return the input color
-	// - This color (like most values passing through the rasterizer) is 
-	//   interpolated for each pixel between the corresponding vertices 
-	//   of the triangle we're rendering
-	return colorTint;
+	// Return a color based on the normal
+    return float4(input.Normal, 1);
 }
