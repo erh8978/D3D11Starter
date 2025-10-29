@@ -162,6 +162,28 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 	debug->QueryInterface(IID_PPV_ARGS(InfoQueue.GetAddressOf()));
 #endif
 
+	// Set up a D3D11.1 version of the Context object
+	Context->QueryInterface<ID3D11DeviceContext1>(Context1.GetAddressOf());
+
+	// Initialize the large "ring" constant buffer
+	// Set up data for the constant buffer description
+	const unsigned int numOfBuffers = 1000; // How many buffers do we intend to have?
+	const unsigned int minimumBufferSize = 256; // What is the minimum size of each buffer (required by the implementation)?
+	cbHeapSizeInBytes = numOfBuffers * minimumBufferSize; // Calculate our arbitrary buffer size
+	cbHeapSizeInBytes = (cbHeapSizeInBytes + 255) / 256 * 256; // Ensure 256-byte alignment in case the math above changes!
+
+	cbHeapOffsetInBytes = 0; // Always starts at zero
+
+	// Create a description of our ring buffer
+	D3D11_BUFFER_DESC constBufferDescription = {}; // Initialize to all zeroes
+	constBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER; // What type of buffer are we creating?
+	constBufferDescription.ByteWidth = cbHeapSizeInBytes; // Large, arbitrary value (that is a multiple of 256)
+	constBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // We have to be able to access this from the CPU, and write to it
+	constBufferDescription.Usage = D3D11_USAGE_DYNAMIC; // This buffer can change
+
+	// Use the device to create the buffer with this description
+	Device->CreateBuffer(&constBufferDescription, 0, constantBufferHeap.GetAddressOf());
+
 	return S_OK;
 }
 
@@ -263,6 +285,63 @@ void Graphics::ResizeBuffers(unsigned int width, unsigned int height)
 
 	// Are we in a fullscreen state?
 	SwapChain->GetFullscreenState(&isFullscreen, 0);
+}
+
+void Graphics::FillAndBindNextConstantBuffer(void* data, unsigned int dataSizeInBytes, D3D11_SHADER_TYPE shaderType, unsigned int registerSlot)
+{
+	// Calculate reservation size - a multiple of 256 that's big enough to contain our data
+	unsigned int reservationSize = (dataSizeInBytes + 255) / 256 * 256;
+
+	// Does the reservation fit in the remaining space?
+	if (cbHeapOffsetInBytes + reservationSize >= cbHeapSizeInBytes)
+	{
+		// If not, loop back to the start
+		cbHeapOffsetInBytes = 0;
+	}
+
+	// Where we will copy our data to, representing physical memory on the GPU
+	D3D11_MAPPED_SUBRESOURCE mappedBuffer{}; // Initialize to all zeroes
+	Context->Map(
+		constantBufferHeap.Get(),
+		0,
+		D3D11_MAP_WRITE_NO_OVERWRITE, // Tell the GPU that we won't be overwriting any data in this buffer (at least, before it's used)
+		0,
+		&mappedBuffer);
+
+	// Write into the next unused portion of the buffer
+	void* uploadAddress = reinterpret_cast<void*>((UINT64)mappedBuffer.pData + cbHeapOffsetInBytes);
+	memcpy(uploadAddress, data, dataSizeInBytes); // Here we use the size of the data, not the reservation -- we don't want to copy from beyond our actual data
+
+	// Unmap as soon as we're done, so the GPU can access the data
+	Context->Unmap(constantBufferHeap.Get(), 0);
+
+	// Calculate the binding offset and size, as measured in 16-byte chunks ("shader constants")
+	unsigned int firstShaderConstant = cbHeapOffsetInBytes / 16;
+	unsigned int numOfShaderConstants = reservationSize / 16;
+
+	// Bind the buffer to the proper pipeline stage
+	switch (shaderType)
+	{
+	case D3D11_VERTEX_SHADER:
+		Context1->VSSetConstantBuffers1(
+			registerSlot,
+			1,
+			constantBufferHeap.GetAddressOf(),
+			&firstShaderConstant,
+			&numOfShaderConstants);
+		break;
+	case D3D11_PIXEL_SHADER:
+		Context1->PSSetConstantBuffers1(
+			registerSlot,
+			1,
+			constantBufferHeap.GetAddressOf(),
+			&firstShaderConstant,
+			&numOfShaderConstants);
+		break;
+	}
+
+	// Offset for the next call
+	cbHeapOffsetInBytes += reservationSize;
 }
 
 

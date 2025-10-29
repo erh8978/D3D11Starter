@@ -12,6 +12,7 @@
 
 #include <DirectXMath.h>
 #include <memory>
+#include <d3d11shadertracing.h>
 
 // Needed for a helper function to load pre-compiled shader files
 #pragma comment(lib, "d3dcompiler.lib")
@@ -42,7 +43,6 @@ Game::Game()
 	//  - You'll be expanding and/or replacing these later
 	LoadShaders();
 	CreateGameEntities();
-	InitializeConstantBuffers();
 	CreateStartingCameras();
 
 	// Set initial graphics API state
@@ -291,31 +291,6 @@ void Game::CreateGameEntities()
 	{
 		gameEntities[i]->GetTransform()->SetScale(0.3f, 0.3f, 0.3f);
 	}
-}
-
-
-// -----------------------------------------------------------
-// Initialize a buffer on the GPU that our C++ code can change
-// -----------------------------------------------------------
-void Game::InitializeConstantBuffers()
-{
-	// Vertex Shader
-	D3D11_BUFFER_DESC vsConstBufferDescription = {}; // Initialize to all zeros
-	vsConstBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	vsConstBufferDescription.ByteWidth = (sizeof(VertexShaderExternalData) + 15) / 16 * 16; // Must be a multiple of 16
-	vsConstBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // We have to be able to write to this buffer from C++
-	vsConstBufferDescription.Usage = D3D11_USAGE_DYNAMIC; // This buffer can change
-
-	Graphics::Device->CreateBuffer(&vsConstBufferDescription, 0, vertexShaderConstantBuffer.GetAddressOf());
-
-	// Pixel Shader
-	D3D11_BUFFER_DESC psConstBufferDescription = {}; // Initialize to all zeros
-	psConstBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	psConstBufferDescription.ByteWidth = (sizeof(PixelShaderExternalData) + 15) / 16 * 16; // Must be a multiple of 16
-	psConstBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; // We have to be able to write to this buffer from C++
-	psConstBufferDescription.Usage = D3D11_USAGE_DYNAMIC; // This buffer can change
-
-	Graphics::Device->CreateBuffer(&psConstBufferDescription, 0, pixelShaderConstantBuffer.GetAddressOf());
 }
 
 
@@ -580,61 +555,36 @@ void Game::DrawAllGameEntities(float totalTime)
 		Graphics::Context->VSSetShader(gameEntities[i]->GetMaterial()->GetVertexShader().Get(), 0, 0);
 		Graphics::Context->PSSetShader(gameEntities[i]->GetMaterial()->GetPixelShader().Get(), 0, 0);
 
-		// Send transform and color data to the constant buffer
-		SendDataToConstantBuffer(
-			gameEntities[i]->GetMaterial()->GetColorTint(),
-			gameEntities[i]->GetTransform()->GetWorldMatrix(),
-			cameras[currentCameraIndex]->GetProjectionMatrix(),
-			cameras[currentCameraIndex]->GetViewMatrix(),
-			totalTime);
-		
+		// Send vertex shader data to the constant buffer
+		// Construct our vertex shader data object
+		VertexShaderExternalData vsData{};
+		vsData.worldMatrix = gameEntities[i]->GetTransform()->GetWorldMatrix();
+		vsData.viewMatrix = cameras[currentCameraIndex]->GetViewMatrix();
+		vsData.projectionMatrix = cameras[currentCameraIndex]->GetProjectionMatrix();
+
+		// Send the data to the ring buffer using the function in Graphics
+		Graphics::FillAndBindNextConstantBuffer(
+			&vsData,
+			sizeof(VertexShaderExternalData),
+			D3D11_VERTEX_SHADER,
+			0);
+
+		// Send pixel shader data to the constant buffer
+		// Construct our pixel shader data object
+		PixelShaderExternalData psData{};
+		psData.colorTint = gameEntities[i]->GetMaterial()->GetColorTint();
+		psData.totalTime = totalTime;
+
+		// Send the data to the ring buffer using the function in Graphics
+		Graphics::FillAndBindNextConstantBuffer(
+			&psData,
+			sizeof(PixelShaderExternalData),
+			D3D11_PIXEL_SHADER,
+			0);
+
 		// Now that the shader has access to the correct world matrix, draw the entity's Mesh
 		gameEntities[i]->Draw();
 	}
-}
-
-
-// -----------------------------------------------------------------
-// Sends colorTint and offset data to the constant buffer on the GPU
-// -----------------------------------------------------------------
-void Game::SendDataToConstantBuffer(XMFLOAT4 colorTint,
-	XMFLOAT4X4 worldMatrix,
-	XMFLOAT4X4 projectionMatrix,
-	XMFLOAT4X4 viewMatrix,
-	float totalTime)
-{
-	// Prepare vsData
-	vsData.worldMatrix = worldMatrix;
-	vsData.projectionMatrix = projectionMatrix;
-	vsData.viewMatrix = viewMatrix;
-
-	D3D11_MAPPED_SUBRESOURCE mappedVSBuffer = {};
-	Graphics::Context->Map(vertexShaderConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedVSBuffer);
-
-	memcpy(mappedVSBuffer.pData, &vsData, sizeof(vsData));
-
-	Graphics::Context->Unmap(vertexShaderConstantBuffer.Get(), 0);
-
-	Graphics::Context->VSSetConstantBuffers(
-		0, // Which register to bind the buffer to? (b0)
-		1, // How many are we setting right now?
-		vertexShaderConstantBuffer.GetAddressOf()); // Array of buffers (or address of just one)
-
-	// Prepare psData
-	psData.colorTint = colorTint;
-	psData.totalTime = totalTime;
-
-	D3D11_MAPPED_SUBRESOURCE mappedPSBuffer = {};
-	Graphics::Context->Map(pixelShaderConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedPSBuffer);
-	
-	memcpy(mappedPSBuffer.pData, &psData, sizeof(psData));
-	
-	Graphics::Context->Unmap(pixelShaderConstantBuffer.Get(), 0);
-	
-	Graphics::Context->PSSetConstantBuffers(
-		0, // Which register to bind the buffer to? (b0)
-		1, // How many are we setting right now?
-	 	pixelShaderConstantBuffer.GetAddressOf()); // Array of buffers (or address of just one)
 }
 
 
