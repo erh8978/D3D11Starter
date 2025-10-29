@@ -11,5 +11,7 @@ struct VertexShaderExternalData
 struct PixelShaderExternalData
 {
 	DirectX::XMFLOAT4 colorTint;
+	DirectX::XMFLOAT2 textureScale;
+	DirectX::XMFLOAT2 textureOffset;
 	float totalTime;
 };

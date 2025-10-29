@@ -10,6 +10,8 @@
 #include "BufferStructs.h"
 #include "Material.h"
 
+#include "WICTextureLoader.h"
+
 #include <DirectXMath.h>
 #include <memory>
 #include <d3d11shadertracing.h>
@@ -198,31 +200,71 @@ void Game::CreateGameEntities()
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> debugUVsPixelShader = LoadPixelShader(L"DebugUVsPS.cso");
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> debugNormalsPixelShader = LoadPixelShader(L"DebugNormalsPS.cso");
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> customPixelShader = LoadPixelShader(L"CustomPS.cso");
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> textureCombinationPixelShader = LoadPixelShader(L"TextureCombinationPS.cso");
 
 	// Create some colorTints
 	XMFLOAT4 blackTint(0.0f, 0.0f, 0.0f, 1.0f);
 	XMFLOAT4 whiteTint(1.0f, 1.0f, 1.0f, 1.0f);
-	XMFLOAT4 redTint(1.0f, 0.2f, 0.2f, 1.0f);
-	XMFLOAT4 greenTint(0.2f, 1.0f, 0.2f, 1.0f);
-	XMFLOAT4 blueTint(0.2f, 0.2f, 1.0f, 1.0f);
+	XMFLOAT4 redTint(1.0f, 0.5f, 0.5f, 1.0f);
+	XMFLOAT4 greenTint(0.5f, 1.0f, 0.5f, 1.0f);
+	XMFLOAT4 blueTint(0.5f, 0.5f, 1.0f, 1.0f);
+
+	// Load textures with Shader Resource Views (SRVs)
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> weatheredPlanksSRV;
+	CreateWICTextureFromFile(Graphics::Device.Get(), Graphics::Context.Get(), L"Assets/Textures/weathered_planks_diff_1k.png", nullptr, weatheredPlanksSRV.GetAddressOf());
+
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> hexagonTilesSRV;
+	CreateWICTextureFromFile(Graphics::Device.Get(), Graphics::Context.Get(), L"Assets/Textures/hexagonal_concrete_paving_diff_1k.png", nullptr, hexagonTilesSRV.GetAddressOf());
+
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> inkSplatterSRV;
+	CreateWICTextureFromFile(Graphics::Device.Get(), Graphics::Context.Get(), L"Assets/Textures/ink_splatter.png", nullptr, inkSplatterSRV.GetAddressOf());
+
+	// Create a sampler state
+	Microsoft::WRL::ComPtr<ID3D11SamplerState> basicSamplerState;
+	D3D11_SAMPLER_DESC basicSamplerDescription{};
+	// Make the textures wrap when UVs are outside of 0-1, in all directions
+	basicSamplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+	basicSamplerDescription.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+	basicSamplerDescription.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+	basicSamplerDescription.Filter = D3D11_FILTER_ANISOTROPIC; // Use anisotropic filtering
+	basicSamplerDescription.MaxAnisotropy = 16; // Maximum mipmapping level
+	basicSamplerDescription.MaxLOD = D3D11_FLOAT32_MAX; // Allow mipmapping at any range
+
+	// Create the sampler state with the description above
+	Graphics::Device->CreateSamplerState(&basicSamplerDescription, basicSamplerState.GetAddressOf());
 
 	// Material 1 - Color tint shader, red
-	std::shared_ptr<Material> basicRedMaterial = std::make_shared<Material>(redTint, vertexShader, basicPixelShader);
+	std::shared_ptr<Material> basicRedMaterial = std::make_shared<Material>(redTint, vertexShader, textureCombinationPixelShader);
+	basicRedMaterial->AddTextureSRV(0, hexagonTilesSRV);
+	basicRedMaterial->AddTextureSRV(1, inkSplatterSRV);
+	basicRedMaterial->AddSamplerState(0, basicSamplerState);
 
 	// Material 2 - Color tint shader, green
 	std::shared_ptr<Material> basicGreenMaterial = std::make_shared<Material>(greenTint, vertexShader, basicPixelShader);;
+	basicGreenMaterial->AddTextureSRV(0, hexagonTilesSRV);
+	basicGreenMaterial->AddSamplerState(0, basicSamplerState);
+	basicGreenMaterial->SetTextureScale(XMFLOAT2(5.0f, 5.0f));
+	basicGreenMaterial->SetTextureOffset(XMFLOAT2(0.5f, 0.5f));
 
 	// Material 3 - Color tint shader, blue
 	std::shared_ptr<Material> basicBlueMaterial = std::make_shared<Material>(blueTint, vertexShader, basicPixelShader);;
+	basicBlueMaterial->AddTextureSRV(0, weatheredPlanksSRV);
+	basicBlueMaterial->AddSamplerState(0, basicSamplerState);
 
 	// Material 4 - UVs shader
 	std::shared_ptr<Material> debugUVsMaterial = std::make_shared<Material>(whiteTint, vertexShader, debugUVsPixelShader);
+	debugUVsMaterial->AddTextureSRV(0, hexagonTilesSRV);
+	debugUVsMaterial->AddSamplerState(0, basicSamplerState);
 
 	// Material 5 - Normals shader
 	std::shared_ptr<Material> debugNormalsMaterial = std::make_shared<Material>(whiteTint, vertexShader, debugNormalsPixelShader);
+	debugNormalsMaterial->AddTextureSRV(0, hexagonTilesSRV);
+	debugNormalsMaterial->AddSamplerState(0, basicSamplerState);
 
 	// Material 6 - Custom shader
 	std::shared_ptr<Material> customMaterial = std::make_shared<Material>(blackTint, vertexShader, customPixelShader);
+	customMaterial->AddTextureSRV(0, hexagonTilesSRV);
+	customMaterial->AddSamplerState(0, basicSamplerState);
 
 	// Create a Mesh for each .obj file, and add them to meshes
 	{
@@ -269,7 +311,7 @@ void Game::CreateGameEntities()
 		gameEntities[12]->GetTransform()->SetTranslation(2.0f, 0.0f, 0.0f);
 		gameEntities[13]->GetTransform()->SetTranslation(3.0f, 0.0f, 0.0f);
 
-		// Row 3 - basicMaterial and customMaterial
+		// Row 3 - basicMaterials and customMaterial
 		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], basicRedMaterial)); // Cube
 		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1], basicGreenMaterial)); // Cylinder
 		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], basicBlueMaterial)); // Helix
@@ -445,6 +487,7 @@ void Game::BuildCustomUI(float deltaTime)
 				std::shared_ptr<GameEntity> currentEntity = gameEntities[i];
 				const char* currentEntityMeshName = currentEntity->GetMesh()->meshName.c_str();
 				std::shared_ptr<Transform> currentTransform = currentEntity->GetTransform();
+				std::shared_ptr<Material> currentMaterial = currentEntity->GetMaterial();
 
 				ImGui::PushID(i);
 
@@ -461,6 +504,21 @@ void Game::BuildCustomUI(float deltaTime)
 					currentTransform->SetTranslation(currentTranslation);
 					currentTransform->SetPitchYawRoll(currentRotation);
 					currentTransform->SetScale(currentScale);
+
+					if (ImGui::TreeNode("Material"))
+					{
+						XMFLOAT2 currentTextureScale = currentMaterial->GetTextureScale();
+						XMFLOAT2 currentTextureOffset = currentMaterial->GetTextureOffset();
+
+						ImGui::DragFloat2("Scale", &currentTextureScale.x, 0.1f);
+						ImGui::DragFloat2("Offset", &currentTextureOffset.x, 0.1f);
+
+						currentMaterial->SetTextureScale(currentTextureScale);
+						currentMaterial->SetTextureOffset(currentTextureOffset);
+
+						// Has to be done at the end of each tree node!
+						ImGui::TreePop();
+					}
 
 					// Has to be done at the end of each tree node!
 					ImGui::TreePop();
@@ -574,6 +632,8 @@ void Game::DrawAllGameEntities(float totalTime)
 		PixelShaderExternalData psData{};
 		psData.colorTint = gameEntities[i]->GetMaterial()->GetColorTint();
 		psData.totalTime = totalTime;
+		psData.textureScale = gameEntities[i]->GetMaterial()->GetTextureScale();
+		psData.textureOffset = gameEntities[i]->GetMaterial()->GetTextureOffset();
 
 		// Send the data to the ring buffer using the function in Graphics
 		Graphics::FillAndBindNextConstantBuffer(
@@ -581,6 +641,9 @@ void Game::DrawAllGameEntities(float totalTime)
 			sizeof(PixelShaderExternalData),
 			D3D11_PIXEL_SHADER,
 			0);
+
+		// Bind texture shader resource views and samplers
+		gameEntities[i]->GetMaterial()->BindTexturesAndSamplers();
 
 		// Now that the shader has access to the correct world matrix, draw the entity's Mesh
 		gameEntities[i]->Draw();

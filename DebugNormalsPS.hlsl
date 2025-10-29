@@ -20,6 +20,8 @@ struct VertexToPixel
 cbuffer ExternalData : register(b0)
 {
     float4 colorTint;
+    float2 textureScale;
+    float2 textureOffset;
     float totalTime;
 }
 
