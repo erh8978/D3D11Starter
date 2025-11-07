@@ -24,6 +24,9 @@ public:
 	DirectX::XMFLOAT3 GetPitchYawRoll();
 	float GetFovDegrees();
 
+	void SetTranslation(DirectX::XMFLOAT3);
+	void SetPitchYawRoll(DirectX::XMFLOAT3);
+
 	void UpdateProjectionMatrix(float aspectRatio);
 
 	void Update(float deltaTime);

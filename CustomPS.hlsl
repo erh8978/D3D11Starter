@@ -1,21 +1,5 @@
+#include "ShaderIncludes.hlsli"
 // Custom pixel shader.
-
-// Struct representing the data we expect to receive from earlier pipeline stages
-// - Should match the output of our corresponding vertex shader
-// - The name of the struct itself is unimportant
-// - The variable names don't have to match other shaders (just the semantics)
-// - Each variable must have a semantic, which defines its usage
-struct VertexToPixel
-{
-	// Data type
-	//  |
-	//  |   Name          Semantic
-	//  |    |                |
-	//  v    v                v
-    float4 screenPosition : SV_POSITION; // XYZW position (System Value Position)
-    float2 UV : TEXCOORD; // UV coordinates
-    float3 Normal : NORMAL; // Surface normal
-};
 
 cbuffer ExternalData : register(b0)
 {
@@ -23,11 +7,9 @@ cbuffer ExternalData : register(b0)
     float2 textureScale;
     float2 textureOffset;
     float totalTime;
-}
-
-float random(float2 s)
-{
-    return frac(sin(dot(s, float2(12.9898, 78.233))) * 43758.5453123);
+    float3 cameraPos;
+    float roughness;
+    float3 backgroundColor;
 }
 
 // --------------------------------------------------------

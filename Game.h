@@ -4,6 +4,7 @@
 #include "BufferStructs.h"
 #include "GameEntity.h"
 #include "Camera.h"
+#include "Lights.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -32,6 +33,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> LoadPixelShader(const WCHAR* shaderPath);
 	void CreateGameEntities();
 	void CreateStartingCameras();
+	void CreateInitialLights();
 
 	// Done in Update()
 	void UpdateCameras(float deltaTime);
@@ -48,7 +50,8 @@ private:
 	void UpdateAllCameraProjectionMatrices(float aspectRatio);
 
 	// Values that can be changed through ImGui
-	float backgroundColor[4] = { 0.4f, 0.6f, 0.75f, 1.0f };
+	DirectX::XMFLOAT3 defaultBgColor = DirectX::XMFLOAT3(0.2f, 0.2f, 0.5f);
+	DirectX::XMFLOAT3 backgroundColor = defaultBgColor;
 	bool showImGuiDemoWindow = false;
 
 	// Note the usage of ComPtr below
@@ -68,5 +71,7 @@ private:
 	// Cameras
 	std::vector<std::shared_ptr<Camera>> cameras;
 	int currentCameraIndex = 0;
+	// Lights
+	std::vector<Light> lights;
 };
 

@@ -216,6 +216,14 @@ DirectX::XMFLOAT4X4 Transform::GetWorldMatrix()
 	return world;
 }
 
+DirectX::XMFLOAT4X4 Transform::GetWorldInvTranspose()
+{
+	// Use GetWorldMatrix without storing the result to update worldInvTranspose if necessary.
+	GetWorldMatrix();
+
+	return worldInverseTranspose;
+}
+
 void Transform::RecalculateDirectionVectors()
 {
 	// Reset vectors to world right, up, and forward

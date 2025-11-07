@@ -61,6 +61,16 @@ float Camera::GetFovDegrees()
 	return XMConvertToDegrees(fieldOfViewRadians);
 }
 
+void Camera::SetPitchYawRoll(XMFLOAT3 input)
+{
+	myTransform.SetPitchYawRoll(input);
+}
+
+void Camera::SetTranslation(XMFLOAT3 input)
+{
+	myTransform.SetTranslation(input);
+}
+
 void Camera::Update(float deltaTime)
 {
 	float currentMoveSpeed = movementSpeed;

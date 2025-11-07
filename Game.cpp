@@ -46,6 +46,7 @@ Game::Game()
 	LoadShaders();
 	CreateGameEntities();
 	CreateStartingCameras();
+	CreateInitialLights();
 
 	// Set initial graphics API state
 	//  - These settings persist until we change them
@@ -197,10 +198,6 @@ void Game::CreateGameEntities()
 	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader = LoadVertexShader(L"VertexShader.cso");
 
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> basicPixelShader = LoadPixelShader(L"PixelShader.cso");
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> debugUVsPixelShader = LoadPixelShader(L"DebugUVsPS.cso");
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> debugNormalsPixelShader = LoadPixelShader(L"DebugNormalsPS.cso");
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> customPixelShader = LoadPixelShader(L"CustomPS.cso");
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> textureCombinationPixelShader = LoadPixelShader(L"TextureCombinationPS.cso");
 
 	// Create some colorTints
 	XMFLOAT4 blackTint(0.0f, 0.0f, 0.0f, 1.0f);
@@ -216,9 +213,6 @@ void Game::CreateGameEntities()
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> hexagonTilesSRV;
 	CreateWICTextureFromFile(Graphics::Device.Get(), Graphics::Context.Get(), L"Assets/Textures/hexagonal_concrete_paving_diff_1k.png", nullptr, hexagonTilesSRV.GetAddressOf());
 
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> inkSplatterSRV;
-	CreateWICTextureFromFile(Graphics::Device.Get(), Graphics::Context.Get(), L"Assets/Textures/ink_splatter.png", nullptr, inkSplatterSRV.GetAddressOf());
-
 	// Create a sampler state
 	Microsoft::WRL::ComPtr<ID3D11SamplerState> basicSamplerState;
 	D3D11_SAMPLER_DESC basicSamplerDescription{};
@@ -233,38 +227,15 @@ void Game::CreateGameEntities()
 	// Create the sampler state with the description above
 	Graphics::Device->CreateSamplerState(&basicSamplerDescription, basicSamplerState.GetAddressOf());
 
-	// Material 1 - Color tint shader, red
-	std::shared_ptr<Material> basicRedMaterial = std::make_shared<Material>(redTint, vertexShader, textureCombinationPixelShader);
-	basicRedMaterial->AddTextureSRV(0, hexagonTilesSRV);
-	basicRedMaterial->AddTextureSRV(1, inkSplatterSRV);
-	basicRedMaterial->AddSamplerState(0, basicSamplerState);
+	// Material 1 - Weathered Planks
+	std::shared_ptr<Material> planksMaterial = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
+	planksMaterial->AddTextureSRV(0, weatheredPlanksSRV);
+	planksMaterial->AddSamplerState(0, basicSamplerState);
 
-	// Material 2 - Color tint shader, green
-	std::shared_ptr<Material> basicGreenMaterial = std::make_shared<Material>(greenTint, vertexShader, basicPixelShader);;
-	basicGreenMaterial->AddTextureSRV(0, hexagonTilesSRV);
-	basicGreenMaterial->AddSamplerState(0, basicSamplerState);
-	basicGreenMaterial->SetTextureScale(XMFLOAT2(5.0f, 5.0f));
-	basicGreenMaterial->SetTextureOffset(XMFLOAT2(0.5f, 0.5f));
-
-	// Material 3 - Color tint shader, blue
-	std::shared_ptr<Material> basicBlueMaterial = std::make_shared<Material>(blueTint, vertexShader, basicPixelShader);;
-	basicBlueMaterial->AddTextureSRV(0, weatheredPlanksSRV);
-	basicBlueMaterial->AddSamplerState(0, basicSamplerState);
-
-	// Material 4 - UVs shader
-	std::shared_ptr<Material> debugUVsMaterial = std::make_shared<Material>(whiteTint, vertexShader, debugUVsPixelShader);
-	debugUVsMaterial->AddTextureSRV(0, hexagonTilesSRV);
-	debugUVsMaterial->AddSamplerState(0, basicSamplerState);
-
-	// Material 5 - Normals shader
-	std::shared_ptr<Material> debugNormalsMaterial = std::make_shared<Material>(whiteTint, vertexShader, debugNormalsPixelShader);
-	debugNormalsMaterial->AddTextureSRV(0, hexagonTilesSRV);
-	debugNormalsMaterial->AddSamplerState(0, basicSamplerState);
-
-	// Material 6 - Custom shader
-	std::shared_ptr<Material> customMaterial = std::make_shared<Material>(blackTint, vertexShader, customPixelShader);
-	customMaterial->AddTextureSRV(0, hexagonTilesSRV);
-	customMaterial->AddSamplerState(0, basicSamplerState);
+	// Material 2 - Hex Tiles
+	std::shared_ptr<Material> tilesMaterial = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
+	tilesMaterial->AddTextureSRV(0, hexagonTilesSRV);
+	tilesMaterial->AddSamplerState(0, basicSamplerState);
 
 	// Create a Mesh for each .obj file, and add them to meshes
 	{
@@ -277,55 +248,23 @@ void Game::CreateGameEntities()
 		meshes.push_back(std::make_shared<Mesh>(FixPath("../../Assets/Meshes/quad_double_sided.obj").c_str(), "Double-Sided Quad")); // Double-Sided Quad
 	}
 
-	// Create 21 GameEntities, with some sharing the same Mesh
+	// Create 7 GameEntities with different Meshes
 	{
-		// Row 1 - debugNormalsMaterial
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], debugNormalsMaterial)); // Cube
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1], debugNormalsMaterial)); // Cylinder
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], debugNormalsMaterial)); // Helix
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[3], debugNormalsMaterial)); // Sphere
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[4], debugNormalsMaterial)); // Torus
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[5], debugNormalsMaterial)); // Quad
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], debugNormalsMaterial)); // Double-Sided Quad
-		gameEntities[0]->GetTransform()->SetTranslation(-3.0f, 1.0f, 0.0f);
-		gameEntities[1]->GetTransform()->SetTranslation(-2.0f, 1.0f, 0.0f);
-		gameEntities[2]->GetTransform()->SetTranslation(-1.0f, 1.0f, 0.0f);
-		gameEntities[3]->GetTransform()->SetTranslation(0.0f, 1.0f, 0.0f);
-		gameEntities[4]->GetTransform()->SetTranslation(1.0f, 1.0f, 0.0f);
-		gameEntities[5]->GetTransform()->SetTranslation(2.0f, 1.0f, 0.0f);
-		gameEntities[6]->GetTransform()->SetTranslation(3.0f, 1.0f, 0.0f);
 
-		// Row 2 - debugUVsMaterial
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], debugUVsMaterial)); // Cube
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1], debugUVsMaterial)); // Cylinder
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], debugUVsMaterial)); // Helix
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[3], debugUVsMaterial)); // Sphere
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[4], debugUVsMaterial)); // Torus
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[5], debugUVsMaterial)); // Quad
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], debugUVsMaterial)); // Double-Sided Quad
-		gameEntities[7]->GetTransform()->SetTranslation(-3.0f, 0.0f, 0.0f);
-		gameEntities[8]->GetTransform()->SetTranslation(-2.0f, 0.0f, 0.0f);
-		gameEntities[9]->GetTransform()->SetTranslation(-1.0f, 0.0f, 0.0f);
-		gameEntities[10]->GetTransform()->SetTranslation(0.0f, 0.0f, 0.0f);
-		gameEntities[11]->GetTransform()->SetTranslation(1.0f, 0.0f, 0.0f);
-		gameEntities[12]->GetTransform()->SetTranslation(2.0f, 0.0f, 0.0f);
-		gameEntities[13]->GetTransform()->SetTranslation(3.0f, 0.0f, 0.0f);
-
-		// Row 3 - basicMaterials and customMaterial
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], basicRedMaterial)); // Cube
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1], basicGreenMaterial)); // Cylinder
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], basicBlueMaterial)); // Helix
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[3], customMaterial)); // Sphere
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[4], basicBlueMaterial)); // Torus
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[5], basicGreenMaterial)); // Quad
-		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], basicRedMaterial)); // Double-Sided Quad
-		gameEntities[14]->GetTransform()->SetTranslation(-3.0f, -1.0f, 0.0f);
-		gameEntities[15]->GetTransform()->SetTranslation(-2.0f, -1.0f, 0.0f);
-		gameEntities[16]->GetTransform()->SetTranslation(-1.0f, -1.0f, 0.0f);
-		gameEntities[17]->GetTransform()->SetTranslation(0.0f, -1.0f, 0.0f);
-		gameEntities[18]->GetTransform()->SetTranslation(1.0f, -1.0f, 0.0f);
-		gameEntities[19]->GetTransform()->SetTranslation(2.0f, -1.0f, 0.0f);
-		gameEntities[20]->GetTransform()->SetTranslation(3.0f, -1.0f, 0.0f);
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[0], tilesMaterial)); // Cube
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[1], tilesMaterial)); // Cylinder
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[2], planksMaterial)); // Helix
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[3], planksMaterial)); // Sphere
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[4], planksMaterial)); // Torus
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[5], tilesMaterial)); // Quad
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], tilesMaterial)); // Double-Sided Quad
+		gameEntities[0]->GetTransform()->SetTranslation(-3.0f, 0.0f, 0.0f);
+		gameEntities[1]->GetTransform()->SetTranslation(-2.0f, 0.0f, 0.0f);
+		gameEntities[2]->GetTransform()->SetTranslation(-1.0f, 0.0f, 0.0f);
+		gameEntities[3]->GetTransform()->SetTranslation(0.0f, 0.0f, 0.0f);
+		gameEntities[4]->GetTransform()->SetTranslation(1.0f, 0.0f, 0.0f);
+		gameEntities[5]->GetTransform()->SetTranslation(2.0f, 0.0f, 0.0f);
+		gameEntities[6]->GetTransform()->SetTranslation(3.0f, 0.0f, 0.0f);
 	}
 
 	// Make the entities smaller, so they aren't huge (for now)
@@ -342,11 +281,19 @@ void Game::CreateGameEntities()
 void Game::CreateStartingCameras()
 {
 	// First camera: set back from starting scene, standard FOV
-	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 0.0f, -5.0f), Window::AspectRatio()));
+	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 1.5f, -5.0f), Window::AspectRatio()));
+	cameras[0]->SetPitchYawRoll(XMFLOAT3(0.3f, 0.0f, 0.0f));
 	// Second camera: further back from the starting scene, narrower FOV
 	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(1.0f, 0.0f, -10.0f), Window::AspectRatio(), 30.0f));
 }
 
+void Game::CreateInitialLights()
+{
+	lights.push_back(Light::Directional(XMFLOAT3(1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 0.0f, 0.0f))); // Red directional light from the left
+	lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 0.0f, 1.0f))); // Blue directional light from the right
+	lights.push_back(Light::Point(XMFLOAT3(0.0f, 1.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 1.0f, 0.0f))); // Green point light above center
+	lights.push_back(Light::Spot(XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT3(2.0f, 1.0f, 0.0f), 0.75f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White spot light
+}
 
 // --------------------------------------------------------
 // Update your game here - user input, move objects, AI, etc.
@@ -436,16 +383,11 @@ void Game::BuildCustomUI(float deltaTime)
 		ImGui::Text("Window Dimensions: %ix%ip", width, height);
 
 		// Because backgroundColor is an array pointer, any changes to it automatically happen elsewhere (mostly in Draw())
-		ImGui::ColorEdit4("Game Background Color", backgroundColor);
+		ImGui::ColorEdit3("Game Background Color", &backgroundColor.x);
 
 		if (ImGui::Button("Reset Background"))
 		{
-			// I can't figure out a better way of resetting the array's values,
-			// so here I am doing it like a fool.
-			backgroundColor[0] = 0.4f;
-			backgroundColor[1] = 0.6f;
-			backgroundColor[2] = 0.75f;
-			backgroundColor[3] = 1.0f;
+			backgroundColor = defaultBgColor;
 		}
 
 		// Dropdown tree with info on each Mesh
@@ -596,7 +538,7 @@ void Game::FrameStart()
 	// - At the beginning of Game::Draw() before drawing *anything*
 	{
 		// Clear the back buffer (erase what's on screen) and depth buffer
-		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(), backgroundColor);
+		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(), &backgroundColor.x);
 		Graphics::Context->ClearDepthStencilView(Graphics::DepthBufferDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 	}
 }
@@ -619,6 +561,7 @@ void Game::DrawAllGameEntities(float totalTime)
 		vsData.worldMatrix = gameEntities[i]->GetTransform()->GetWorldMatrix();
 		vsData.viewMatrix = cameras[currentCameraIndex]->GetViewMatrix();
 		vsData.projectionMatrix = cameras[currentCameraIndex]->GetProjectionMatrix();
+		vsData.worldInvTranspose = gameEntities[i]->GetTransform()->GetWorldInvTranspose();
 
 		// Send the data to the ring buffer using the function in Graphics
 		Graphics::FillAndBindNextConstantBuffer(
@@ -634,6 +577,10 @@ void Game::DrawAllGameEntities(float totalTime)
 		psData.totalTime = totalTime;
 		psData.textureScale = gameEntities[i]->GetMaterial()->GetTextureScale();
 		psData.textureOffset = gameEntities[i]->GetMaterial()->GetTextureOffset();
+		psData.cameraPos = cameras[currentCameraIndex]->GetTranslation();
+		psData.roughness = gameEntities[i]->GetMaterial()->roughness;
+		psData.backgroundColor = backgroundColor;
+		memcpy(&psData.lights, &lights[0], sizeof(Light) * (int)lights.size());
 
 		// Send the data to the ring buffer using the function in Graphics
 		Graphics::FillAndBindNextConstantBuffer(

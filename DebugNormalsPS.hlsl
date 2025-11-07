@@ -1,21 +1,5 @@
+#include "ShaderIncludes.hlsli"
 // Debug pixel shader. Returns color based on surface normals.
-
-// Struct representing the data we expect to receive from earlier pipeline stages
-// - Should match the output of our corresponding vertex shader
-// - The name of the struct itself is unimportant
-// - The variable names don't have to match other shaders (just the semantics)
-// - Each variable must have a semantic, which defines its usage
-struct VertexToPixel
-{
-	// Data type
-	//  |
-	//  |   Name          Semantic
-	//  |    |                |
-	//  v    v                v
-    float4 screenPosition : SV_POSITION; // XYZW position (System Value Position)
-    float2 UV : TEXCOORD; // UV coordinates
-    float3 Normal : NORMAL; // Surface normal
-};
 
 cbuffer ExternalData : register(b0)
 {
@@ -23,6 +7,9 @@ cbuffer ExternalData : register(b0)
     float2 textureScale;
     float2 textureOffset;
     float totalTime;
+    float3 cameraPos;
+    float roughness;
+    float3 backgroundColor;
 }
 
 // --------------------------------------------------------
@@ -36,6 +23,8 @@ cbuffer ExternalData : register(b0)
 // --------------------------------------------------------
 float4 main(VertexToPixel input) : SV_TARGET
 {
+    input.Normal = normalize(input.Normal);
+    
 	// Return a color based on the normal
     return float4(input.Normal, 1);
 }

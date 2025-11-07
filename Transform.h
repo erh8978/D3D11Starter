@@ -34,6 +34,7 @@ public:
 	DirectX::XMFLOAT3 GetForward();
 
 	DirectX::XMFLOAT4X4 GetWorldMatrix();
+	DirectX::XMFLOAT4X4 GetWorldInvTranspose();
 
 private:
 

@@ -3,13 +3,15 @@
 
 Material::Material(DirectX::XMFLOAT4 colorTint,
 	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader,
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader) :
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader,
+	float roughnessValue) :
 	textureScale { 1.0f, 1.0f },
 	textureOffset { 0.0f, 0.0f }
 {
 	myColorTint = colorTint;
 	myVertexShader = vertexShader;
 	myPixelShader = pixelShader;
+	roughness = roughnessValue;
 }
 
 Material::~Material()
