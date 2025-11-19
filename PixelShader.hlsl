@@ -14,8 +14,9 @@ cbuffer ExternalData : register(b0)
     Light lights[5]; // Array of exactly 5 lights
 }
 
-// Texture and sampler state are bound with registers, specifically t0 and s0
+// Texture and sampler state are bound with registers, specifically t0, t1, and s0
 Texture2D SurfaceTexture		: register(t0);
+Texture2D NormalMap             : register(t1);
 SamplerState BasicSampler		: register(s0);
 
 // --------------------------------------------------------
@@ -35,12 +36,27 @@ float4 main(VertexToPixel input) : SV_TARGET
     // Modify UV coordinates with scale and offset
     input.UV = input.UV * textureScale + textureOffset;
     
+    // Orthonormalize tangent
+    input.Tangent = normalize(input.Tangent - dot(input.Tangent, input.Normal) * input.Normal);
+    
+    // Calculate bitangent
+    float3 Bitangent = cross(input.Tangent, input.Normal);
+    
+    // Create TBN matrix
+    float3x3 TBN = float3x3(input.Tangent, Bitangent, input.Normal);
+    
+    // Sample normal map
+    float3 packedNormal = NormalMap.Sample(BasicSampler, input.UV);
+    float3 unpackedNormal = normalize(packedNormal * 2 - 1);
+    
+    // Transform normal from map
+    float3 finalNormal = mul(unpackedNormal, TBN);
+    
     // Calculate the unit vector to the camera
     float3 dirToCamera = normalize(cameraPos - input.worldPosition);
     
     // Get base color by sampling the texture
     float4 surfaceColor = SurfaceTexture.Sample(BasicSampler, input.UV);
-    //surfaceColor = float4(1, 1, 1, 1); // Uncomment to remove texture for testing
     
     // Ambient term = ambientColor (background color but darker) * surface color
     float3 ambientTerm = backgroundColor * 0.5 * surfaceColor.rgb;
@@ -64,12 +80,12 @@ float4 main(VertexToPixel input) : SV_TARGET
             
                 break;
             case LIGHT_TYPE_POINT:
-                dirToLight = -normalize(input.worldPosition - light.Position);
+                dirToLight = normalize(light.Position - input.worldPosition);
                 attenuation = Attenuate(light, input.worldPosition);
             
                 break;
             case LIGHT_TYPE_SPOT:
-                dirToLight = -normalize(input.worldPosition - light.Position);
+                dirToLight = normalize(light.Position - input.worldPosition);
             
                 float pixelAngle = saturate(dot(-dirToLight, light.Direction));
                 float cosOuter = cos(light.SpotOuterAngle);
@@ -83,16 +99,24 @@ float4 main(VertexToPixel input) : SV_TARGET
         }
         
         // Diffuse term = dot product of the direction to the light along the surface normal * light color * light intensity * surface color
-        float3 diffuseTerm = saturate(dot(input.Normal, dirToLight)) * light.Color * light.Intensity * surfaceColor.rgb;
+        float3 diffuseTerm = saturate(dot(finalNormal, dirToLight)) * light.Color * light.Intensity * surfaceColor.rgb;
         
         // Reflect INCOMING light direction
-        float3 refl = reflect(light.Direction, input.Normal);
+        float3 refl = reflect(light.Direction, finalNormal);
         
         // Calculate cosine of the reflection and camera vector
         float RdotV = saturate(dot(refl, dirToCamera));
         
         // Raise to a power equal to some "shininess"
         float3 specularTerm = pow(max(RdotV, 0.0f), specExponent) * light.Color * light.Intensity;
+        
+        // Cut the specular if the diffuse contribution is zero
+        // - any() returns 1 if any component of the param is non-zero
+        // - In other words:
+        // - If the diffuse amount is 0, any(diffuse) returns 0
+        // - If the diffuse amount is != 0, any(diffuse) returns 1
+        // - So when diffuse is 0, specular becomes 0
+        specularTerm *= any(diffuseTerm);
         
         lightTotal = lightTotal + (diffuseTerm + specularTerm) * attenuation;
     }

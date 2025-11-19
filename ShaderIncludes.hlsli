@@ -35,6 +35,7 @@ struct VertexToPixel
     float2 UV               : TEXCOORD; // UV coordinates
     float3 Normal           : NORMAL; // Surface normal
     float3 worldPosition    : POSITION; // World space position
+    float3 Tangent          : TANGENT; // Texture tangent vector
 };
 
 float random(float2 s)

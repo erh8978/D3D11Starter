@@ -16,6 +16,8 @@ public:
 	Mesh(const char* meshPath, std::string name = "Unnamed Mesh");
 	~Mesh();
 
+	void CalculateTangents(Vertex* verts, int numVerts, unsigned int* indices, int numIndices);
+
 	void Draw();
 
 	Microsoft::WRL::ComPtr<ID3D11Buffer> GetVertexBuffer();

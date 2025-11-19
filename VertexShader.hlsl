@@ -14,6 +14,7 @@ struct VertexShaderInput
 	float3 localPosition	: POSITION;     // XYZ position
     float2 UV				: TEXCOORD;		// UV coordinates
     float3 Normal			: NORMAL;		// Surface normal
+    float3 Tangent			: TANGENT;
 };
 
 // Description of constant buffer data
@@ -56,6 +57,7 @@ VertexToPixel main( VertexShaderInput input )
     output.UV = input.UV;
     output.Normal = mul((float3x3)worldInvTranspose, input.Normal);
     output.worldPosition = mul(world, float4(input.localPosition, 1)).xyz;
+    output.Tangent = mul((float3x3)world, input.Tangent);
 
 	// Whatever we return will make its way through the pipeline to the
 	// next programmable stage we're using (the pixel shader for now)
