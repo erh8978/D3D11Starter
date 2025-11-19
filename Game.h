@@ -5,6 +5,7 @@
 #include "GameEntity.h"
 #include "Camera.h"
 #include "Lights.h"
+#include "Sky.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -50,8 +51,8 @@ private:
 	void UpdateAllCameraProjectionMatrices(float aspectRatio);
 
 	// Values that can be changed through ImGui
-	DirectX::XMFLOAT3 defaultBgColor = DirectX::XMFLOAT3(0.2f, 0.2f, 0.5f);
-	DirectX::XMFLOAT3 backgroundColor = defaultBgColor;
+	DirectX::XMFLOAT3 defaultAmbientColor = DirectX::XMFLOAT3(0.227f, 0.153f, 0.212f);
+	DirectX::XMFLOAT3 ambientColor = defaultAmbientColor;
 	bool showImGuiDemoWindow = false;
 
 	// Note the usage of ComPtr below
@@ -73,5 +74,7 @@ private:
 	int currentCameraIndex = 0;
 	// Lights
 	std::vector<Light> lights;
+	// Skybox
+	std::shared_ptr<Sky> skybox;
 };
 

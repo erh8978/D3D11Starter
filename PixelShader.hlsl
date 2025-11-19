@@ -9,7 +9,7 @@ cbuffer ExternalData : register(b0)
     float totalTime;
     float3 cameraPos;
     float roughness;
-    float3 backgroundColor;
+    float3 ambientColor;
     
     Light lights[5]; // Array of exactly 5 lights
 }
@@ -58,8 +58,8 @@ float4 main(VertexToPixel input) : SV_TARGET
     // Get base color by sampling the texture
     float4 surfaceColor = SurfaceTexture.Sample(BasicSampler, input.UV);
     
-    // Ambient term = ambientColor (background color but darker) * surface color
-    float3 ambientTerm = backgroundColor * 0.5 * surfaceColor.rgb;
+    // Ambient term = ambientColor * surface color
+    float3 ambientTerm = ambientColor * surfaceColor.rgb;
     
     // Calcualte our "shininess" value using the roughness of the material
     float specExponent = max((1.0f - roughness) * MAX_SPECULAR_EXPONENT, 1);

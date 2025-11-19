@@ -21,3 +21,9 @@ struct PixelShaderExternalData
 	DirectX::XMFLOAT3 backgroundColor;
 	Light lights[5];
 };
+
+struct SkyboxVertexShaderExternalData
+{
+	DirectX::XMFLOAT4X4 projectionMatrix;
+	DirectX::XMFLOAT4X4 viewMatrix;
+};

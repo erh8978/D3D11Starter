@@ -201,7 +201,6 @@ void Game::CreateGameEntities()
 {
 	// Load vertex & pixel shaders - just one of each for now
 	Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader = LoadVertexShader(L"VertexShader.cso");
-
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> basicPixelShader = LoadPixelShader(L"PixelShader.cso");
 
 	// Create some colorTints
@@ -212,12 +211,6 @@ void Game::CreateGameEntities()
 	XMFLOAT4 blueTint(0.5f, 0.5f, 1.0f, 1.0f);
 
 	// Load textures with Shader Resource Views (SRVs)
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> weatheredPlanksSRV;
-	CreateWICTextureFromFile(Graphics::Device.Get(), Graphics::Context.Get(), L"Assets/Textures/weathered_planks_diff_1k.png", nullptr, weatheredPlanksSRV.GetAddressOf());
-
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> hexagonTilesSRV;
-	CreateWICTextureFromFile(Graphics::Device.Get(), Graphics::Context.Get(), L"Assets/Textures/hexagonal_concrete_paving_diff_1k.png", nullptr, hexagonTilesSRV.GetAddressOf());
-
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> cobblestonesSRV;
 	CreateWICTextureFromFile(Graphics::Device.Get(), Graphics::Context.Get(), L"Assets/Textures/cobblestone.png", nullptr, cobblestonesSRV.GetAddressOf());
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> cobblestonesNormalMapSRV;
@@ -251,49 +244,37 @@ void Game::CreateGameEntities()
 	// Create the sampler state with the description above
 	Graphics::Device->CreateSamplerState(&basicSamplerDescription, basicSamplerState.GetAddressOf());
 
-	// Material 1 - Weathered Planks
-	std::shared_ptr<Material> planksMaterial = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
-	planksMaterial->AddTextureSRV(0, weatheredPlanksSRV);
-	planksMaterial->AddTextureSRV(1, defaultNormalMapSRV);
-	planksMaterial->AddSamplerState(0, basicSamplerState);
-
-	// Material 2 - Hex Tiles
-	std::shared_ptr<Material> tilesMaterial = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
-	tilesMaterial->AddTextureSRV(0, hexagonTilesSRV);
-	tilesMaterial->AddTextureSRV(1, defaultNormalMapSRV);
-	tilesMaterial->AddSamplerState(0, basicSamplerState);
-
-	// Material 3 - Cobblestones
+	// Material 1 - Cobblestones
 	std::shared_ptr<Material> cobblestonesMaterial = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
 	cobblestonesMaterial->AddTextureSRV(0, cobblestonesSRV);
 	cobblestonesMaterial->AddTextureSRV(1, cobblestonesNormalMapSRV);
 	cobblestonesMaterial->AddSamplerState(0, basicSamplerState);
 
-	// Material 4 - Cobblestones, no normal map
+	// Material 2 - Cobblestones, no normal map
 	std::shared_ptr<Material> cobblestonesMaterialNoNormalMap = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
 	cobblestonesMaterialNoNormalMap->AddTextureSRV(0, cobblestonesSRV);
 	cobblestonesMaterialNoNormalMap->AddTextureSRV(1, defaultNormalMapSRV);
 	cobblestonesMaterialNoNormalMap->AddSamplerState(0, basicSamplerState);
 
-	// Material 5 - Cushion
+	// Material 3 - Cushion
 	std::shared_ptr<Material> cushionMaterial = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
 	cushionMaterial->AddTextureSRV(0, cushionSRV);
 	cushionMaterial->AddTextureSRV(1, cushionNormalMapSRV);
 	cushionMaterial->AddSamplerState(0, basicSamplerState);
 
-	// Material 6 - Cushion, no normal map
+	// Material 4 - Cushion, no normal map
 	std::shared_ptr<Material> cushionMaterialNoNormalMap = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
 	cushionMaterialNoNormalMap->AddTextureSRV(0, cushionSRV);
 	cushionMaterialNoNormalMap->AddTextureSRV(1, defaultNormalMapSRV);
 	cushionMaterialNoNormalMap->AddSamplerState(0, basicSamplerState);
 
-	// Material 7 - Rocks
+	// Material 5 - Rocks
 	std::shared_ptr<Material> rocksMaterial = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
 	rocksMaterial->AddTextureSRV(0, rocksSRV);
 	rocksMaterial->AddTextureSRV(1, rocksNormalMapSRV);
 	rocksMaterial->AddSamplerState(0, basicSamplerState);
 
-	// Material 8 - Rocks, no normal map
+	// Material 6 - Rocks, no normal map
 	std::shared_ptr<Material> rocksMaterialNoNormalMap = std::make_shared<Material>(whiteTint, vertexShader, basicPixelShader, 0.25f);
 	rocksMaterialNoNormalMap->AddTextureSRV(0, rocksSRV);
 	rocksMaterialNoNormalMap->AddTextureSRV(1, defaultNormalMapSRV);
@@ -334,6 +315,23 @@ void Game::CreateGameEntities()
 	{
 		gameEntities[i]->GetTransform()->SetScale(0.3f, 0.3f, 0.3f);
 	}
+
+	// Create skybox object
+	// Load vertex & pixel shaders
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> skyboxVertexShader = LoadVertexShader(L"SkyboxVS.cso");
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> skyboxPixelShader = LoadPixelShader(L"SkyboxPS.cso");
+
+	skybox = std::make_shared<Sky>(meshes[0],
+		basicSamplerState,
+		skyboxVertexShader,
+		skyboxPixelShader,
+		L"Assets/Textures/Clouds Pink/right.png",
+		L"Assets/Textures/Clouds Pink/left.png",
+		L"Assets/Textures/Clouds Pink/up.png",
+		L"Assets/Textures/Clouds Pink/down.png",
+		L"Assets/Textures/Clouds Pink/front.png",
+		L"Assets/Textures/Clouds Pink/back.png");
+
 }
 
 
@@ -352,13 +350,13 @@ void Game::CreateStartingCameras()
 void Game::CreateInitialLights()
 {
 	// Testing for self-shadowing
-	lights.push_back(Light::Directional(XMFLOAT3(1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional from the left
-	lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 0.0f, 0.0f))); // Red directional from the right
+	//lights.push_back(Light::Directional(XMFLOAT3(1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional from the left
+	//lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 0.0f, 0.0f))); // Red directional from the right
 
-	//lights.push_back(Light::Directional(XMFLOAT3(1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 0.0f, 0.0f))); // Red directional light from the left
-	//lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 0.0f, 1.0f))); // Blue directional light from the right
-	//lights.push_back(Light::Point(XMFLOAT3(0.0f, 1.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 1.0f, 0.0f))); // Green point light above center
-	//lights.push_back(Light::Spot(XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT3(2.0f, 1.0f, 0.0f), 0.75f, XMFLOAT3(1.0f, 1.0f, 1.0f), 5.0f, 0.2f, 0.25f)); // White spot light
+	lights.push_back(Light::Directional(XMFLOAT3(1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 0.0f, 0.0f))); // Red directional light from the left
+	lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 0.0f, 1.0f))); // Blue directional light from the right
+	lights.push_back(Light::Point(XMFLOAT3(0.0f, 1.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 1.0f, 0.0f))); // Green point light above center
+	lights.push_back(Light::Spot(XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT3(2.0f, 1.0f, 0.0f), 0.75f, XMFLOAT3(1.0f, 1.0f, 1.0f), 5.0f, 0.2f, 0.25f)); // White spot light
 }
 
 // --------------------------------------------------------
@@ -447,14 +445,6 @@ void Game::BuildCustomUI(float deltaTime)
 		int width = Window::Width();
 		int height = Window::Height();
 		ImGui::Text("Window Dimensions: %ix%ip", width, height);
-
-		// Because backgroundColor is an array pointer, any changes to it automatically happen elsewhere (mostly in Draw())
-		ImGui::ColorEdit3("Game Background Color", &backgroundColor.x);
-
-		if (ImGui::Button("Reset Background"))
-		{
-			backgroundColor = defaultBgColor;
-		}
 
 		// Dropdown tree with info on each Mesh
 		if (ImGui::TreeNode("Mesh Info"))
@@ -567,7 +557,13 @@ void Game::BuildCustomUI(float deltaTime)
 		// Lights
 		if (ImGui::TreeNode("Lights"))
 		{
-			ImGui::Text("Note: Ambient term is 1/2 of background color above.");
+			// Because ambientColor is an array pointer, any changes to it automatically happen elsewhere (mostly in Draw())
+			ImGui::ColorEdit3("Ambient Color", &ambientColor.x);
+
+			if (ImGui::Button("Reset Ambient Color"))
+			{
+				ambientColor = defaultAmbientColor;
+			}
 
 			for (unsigned int i = 0; i < lights.size(); i++)
 			{
@@ -631,6 +627,10 @@ void Game::Draw(float deltaTime, float totalTime)
 	// - Other Direct3D calls will also be necessary to do more complex things
 	DrawAllGameEntities(totalTime);
 
+	// AFTER geometry, draw the skybox.
+	// It goes after geometry so we don't waste time drawing stuff that'll be drawn over anyways!
+	skybox->Draw(cameras[currentCameraIndex]);
+
 	// Draw ImGui last, so it appears over everything else.
 	RenderImGui();
 
@@ -648,7 +648,7 @@ void Game::FrameStart()
 	// - At the beginning of Game::Draw() before drawing *anything*
 	{
 		// Clear the back buffer (erase what's on screen) and depth buffer
-		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(), &backgroundColor.x);
+		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(), &ambientColor.x);
 		Graphics::Context->ClearDepthStencilView(Graphics::DepthBufferDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 	}
 }
@@ -689,7 +689,7 @@ void Game::DrawAllGameEntities(float totalTime)
 		psData.textureOffset = gameEntities[i]->GetMaterial()->GetTextureOffset();
 		psData.cameraPos = cameras[currentCameraIndex]->GetTranslation();
 		psData.roughness = gameEntities[i]->GetMaterial()->roughness;
-		psData.backgroundColor = backgroundColor;
+		psData.backgroundColor = ambientColor;
 		memcpy(&psData.lights, &lights[0], sizeof(Light) * (int)lights.size());
 
 		// Send the data to the ring buffer using the function in Graphics
