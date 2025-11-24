@@ -46,7 +46,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     float3x3 TBN = float3x3(input.Tangent, Bitangent, input.Normal);
     
     // Sample normal map
-    float3 packedNormal = NormalMap.Sample(BasicSampler, input.UV);
+    float3 packedNormal = (float3)NormalMap.Sample(BasicSampler, input.UV);
     float3 unpackedNormal = normalize(packedNormal * 2 - 1);
     
     // Transform normal from map
@@ -57,6 +57,8 @@ float4 main(VertexToPixel input) : SV_TARGET
     
     // Get base color by sampling the texture
     float4 surfaceColor = SurfaceTexture.Sample(BasicSampler, input.UV);
+    // Then gamma correct it
+    surfaceColor = GammaCorrect(surfaceColor, 2.2);
     
     // Ambient term = ambientColor * surface color
     float3 ambientTerm = ambientColor * surfaceColor.rgb;
@@ -71,12 +73,14 @@ float4 main(VertexToPixel input) : SV_TARGET
     {
         Light light = lights[i];
         
-        float3 dirToLight;
+        light.Direction = normalize(light.Direction);
+        
+        float3 dirToLight = -light.Direction;
         float attenuation = 1;
         switch (light.Type)
         {
             case LIGHT_TYPE_DIRECTIONAL:
-                dirToLight = -light.Direction;
+                //dirToLight = -light.Direction;
             
                 break;
             case LIGHT_TYPE_POINT:
@@ -121,5 +125,5 @@ float4 main(VertexToPixel input) : SV_TARGET
         lightTotal = lightTotal + (diffuseTerm + specularTerm) * attenuation;
     }
     
-    return float4(lightTotal, 1);
+    return GammaCorrect(float4(lightTotal, 1), 1.0 / 2.2);
 }

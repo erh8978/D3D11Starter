@@ -349,11 +349,7 @@ void Game::CreateStartingCameras()
 
 void Game::CreateInitialLights()
 {
-	// Testing for self-shadowing
-	//lights.push_back(Light::Directional(XMFLOAT3(1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional from the left
-	//lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 0.0f, 0.0f))); // Red directional from the right
-
-	lights.push_back(Light::Directional(XMFLOAT3(1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(1.0f, 0.0f, 0.0f))); // Red directional light from the left
+	lights.push_back(Light::Directional(XMFLOAT3(0.0f, -0.45f, -0.9f), 1.0f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional light, from roughly the direction of the skybox's sun 
 	lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 0.0f, 1.0f))); // Blue directional light from the right
 	lights.push_back(Light::Point(XMFLOAT3(0.0f, 1.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 1.0f, 0.0f))); // Green point light above center
 	lights.push_back(Light::Spot(XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT3(2.0f, 1.0f, 0.0f), 0.75f, XMFLOAT3(1.0f, 1.0f, 1.0f), 5.0f, 0.2f, 0.25f)); // White spot light
@@ -586,15 +582,38 @@ void Game::BuildCustomUI(float deltaTime)
 
 				if (ImGui::TreeNode(lightType.c_str()))
 				{
-					ImGui::Text("Light %i", i);
-					ImGui::DragFloat3("Direction", &lights[i].Direction.x, 0.1f);
-					ImGui::DragFloat("Range", &lights[i].Range, 0.1f);
-					ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
-					ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
-					ImGui::DragFloat3("Position", &lights[i].Position.x, 0.1f);
-					ImGui::DragFloat("Spot Inner Angle", &lights[i].SpotInnerAngle, 0.01f, 0.0f, lights[i].SpotOuterAngle - 0.001f);
-					ImGui::DragFloat("Spot Outer Angle", &lights[i].SpotOuterAngle, 0.01f, lights[i].SpotInnerAngle + 0.001f, D3D11_FLOAT32_MAX);
-					
+					switch (lights[i].Type)
+					{
+					case LIGHT_TYPE_DIRECTIONAL:
+						ImGui::Text("Light %i", i);
+						ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
+						ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
+						ImGui::DragFloat3("Direction", &lights[i].Direction.x, 0.1f);
+
+						break;
+
+					case LIGHT_TYPE_POINT:
+						ImGui::Text("Light %i", i);
+						ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
+						ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
+						ImGui::DragFloat3("Position", &lights[i].Position.x, 0.1f);
+						ImGui::DragFloat("Range", &lights[i].Range, 0.1f);
+
+						break;
+
+					case LIGHT_TYPE_SPOT:
+						ImGui::Text("Light %i", i);
+						ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
+						ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
+						ImGui::DragFloat3("Position", &lights[i].Position.x, 0.1f);
+						ImGui::DragFloat3("Direction", &lights[i].Direction.x, 0.1f);
+						ImGui::DragFloat("Range", &lights[i].Range, 0.1f);
+						ImGui::DragFloat("Inner Angle", &lights[i].SpotInnerAngle, 0.01f, 0.0f, lights[i].SpotOuterAngle - 0.001f);
+						ImGui::DragFloat("Outer Angle", &lights[i].SpotOuterAngle, 0.01f, lights[i].SpotInnerAngle + 0.001f, D3D11_FLOAT32_MAX);
+
+						break;
+					}
+
 					ImGui::TreePop();
 				}
 

@@ -74,4 +74,10 @@ float Attenuate(Light light, float3 worldPos)
     return att * att;
 }
 
+// Raises a color float to a given power. Returns the result with w set to 1.
+float4 GammaCorrect(float4 color, float gamma)
+{
+    return float4(pow(color, gamma.xxxx).rgb, 1);
+}
+
 #endif
