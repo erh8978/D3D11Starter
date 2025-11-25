@@ -37,14 +37,14 @@ float4 main(VertexToPixel input) : SV_TARGET
     input.UV = input.UV * textureScale + textureOffset;
     
     // Calculate bitangent and create TBN matrix
-    float3 Bitangent = cross(input.Tangent, input.Normal);
+    float3 Bitangent = normalize(cross(input.Tangent, input.Normal));
     float3x3 TBN = float3x3(input.Tangent, Bitangent, input.Normal);
     
     // Sample albedo color and gamma correct it
     float4 albedoColor = GammaCorrect(Albedo.Sample(BasicSampler, input.UV), 2.2);
     
     // Sample normal map, unpack it, and transform it from tangent space to world space with TBN matrix
-    float3 finalNormal = mul(normalize(NormalMap.Sample(BasicSampler, input.UV) * 2 - 1).xyz, TBN);
+    float3 finalNormal = normalize(mul(normalize(NormalMap.Sample(BasicSampler, input.UV) * 2 - 1).xyz, TBN));
     
     // Sample metal and roughness maps
     float metalness = MetalMap.Sample(BasicSampler, input.UV).r;
@@ -95,8 +95,6 @@ float4 main(VertexToPixel input) : SV_TARGET
         float3 h = normalize(dirToCamera + dirToLight);
         float3 F = F_Schlick(dirToCamera, h, f0);
         float3 balancedDiff = DiffuseEnergyConserve(diff, F, metalness);
-        
-        return spec.rgbb;
         
         // Combine the final diffuse and specular values for this light
         float3 total = (balancedDiff * albedoColor.rgb + spec) * light.Intensity * light.Color;
