@@ -1,6 +1,5 @@
 #include "ShaderIncludes.hlsli"
 // Basic pixel shader. Just returns a color tint passed via constant buffer.
-
 cbuffer ExternalData : register(b0)
 {
     float4 colorTint;
@@ -8,16 +7,16 @@ cbuffer ExternalData : register(b0)
     float2 textureOffset;
     float totalTime;
     float3 cameraPos;
-    float roughness;
-    float3 ambientColor;
     
     Light lights[5]; // Array of exactly 5 lights
 }
 
-// Texture and sampler state are bound with registers, specifically t0, t1, and s0
-Texture2D SurfaceTexture		: register(t0);
-Texture2D NormalMap             : register(t1);
-SamplerState BasicSampler		: register(s0);
+// Texture and sampler state are bound with registers
+Texture2D Albedo		    : register(t0);
+Texture2D NormalMap         : register(t1);
+Texture2D MetalMap          : register(t2);
+Texture2D RoughnessMap      : register(t3);
+SamplerState BasicSampler   : register(s0);
 
 // --------------------------------------------------------
 // The entry point (main method) for our pixel shader
@@ -29,100 +28,77 @@ SamplerState BasicSampler		: register(s0);
 // - Named "main" because that's the default the shader compiler looks for
 // --------------------------------------------------------
 float4 main(VertexToPixel input) : SV_TARGET
-{
-    // Normalize vectors as necessary
+{   
+    // (Ortho)normalize vectors as necessary
     input.Normal = normalize(input.Normal);
-    
-    // Modify UV coordinates with scale and offset
-    input.UV = input.UV * textureScale + textureOffset;
-    
-    // Orthonormalize tangent
     input.Tangent = normalize(input.Tangent - dot(input.Tangent, input.Normal) * input.Normal);
     
-    // Calculate bitangent
-    float3 Bitangent = cross(input.Tangent, input.Normal);
+    // Modify UV coords
+    input.UV = input.UV * textureScale + textureOffset;
     
-    // Create TBN matrix
+    // Calculate bitangent and create TBN matrix
+    float3 Bitangent = cross(input.Tangent, input.Normal);
     float3x3 TBN = float3x3(input.Tangent, Bitangent, input.Normal);
     
-    // Sample normal map
-    float3 packedNormal = (float3)NormalMap.Sample(BasicSampler, input.UV);
-    float3 unpackedNormal = normalize(packedNormal * 2 - 1);
+    // Sample albedo color and gamma correct it
+    float4 albedoColor = GammaCorrect(Albedo.Sample(BasicSampler, input.UV), 2.2);
     
-    // Transform normal from map
-    float3 finalNormal = mul(unpackedNormal, TBN);
+    // Sample normal map, unpack it, and transform it from tangent space to world space with TBN matrix
+    float3 finalNormal = mul(normalize(NormalMap.Sample(BasicSampler, input.UV) * 2 - 1).xyz, TBN);
     
-    // Calculate the unit vector to the camera
+    // Sample metal and roughness maps
+    float metalness = MetalMap.Sample(BasicSampler, input.UV).r;
+    float roughness = RoughnessMap.Sample(BasicSampler, input.UV).r;
+    
+    // Calculate the unit vector to camera
     float3 dirToCamera = normalize(cameraPos - input.worldPosition);
     
-    // Get base color by sampling the texture
-    float4 surfaceColor = SurfaceTexture.Sample(BasicSampler, input.UV);
-    // Then gamma correct it
-    surfaceColor = GammaCorrect(surfaceColor, 2.2);
+    // Calculate specular color
+    float3 f0 = lerp(F0_NON_METAL, albedoColor.rgb, metalness);
     
-    // Ambient term = ambientColor * surface color
-    float3 ambientTerm = ambientColor * surfaceColor.rgb;
+    // Variable to hold sum of lighting calculations
+    float3 lightTotal = float3(0.0f, 0.0f, 0.0f);
     
-    // Calcualte our "shininess" value using the roughness of the material
-    float specExponent = max((1.0f - roughness) * MAX_SPECULAR_EXPONENT, 1);
-    
-    // Keep a running total of all light on this pixel, starting with the ambient term because it's only added once
-    float3 lightTotal = ambientTerm;
-    // Do the following for EACH light:
-    for (int i = 0; i < 5; i++)
+    // Loop for each light
+    for (int i = 0; i < 1; i++)
     {
-        Light light = lights[i];
+        Light light = lights[i]; // Assign current light to a variable for easy access
+        light.Direction = normalize(light.Direction); // Normalize light's direction, if it has one
         
-        light.Direction = normalize(light.Direction);
+        float3 dirToLight = -light.Direction; // This will be replaced if light is Point or Spot; done to prevent "dirToLight potentially uninitialized" warning
+        //float attenuation = 1; // Default to 100% intensity
         
-        float3 dirToLight = -light.Direction;
-        float attenuation = 1;
-        switch (light.Type)
+        // Calcualte dirToLight and attenuation for point and spot lights
+        if(light.Type == LIGHT_TYPE_POINT || light.Type == LIGHT_TYPE_SPOT)
         {
-            case LIGHT_TYPE_DIRECTIONAL:
-                //dirToLight = -light.Direction;
+            dirToLight = normalize(light.Position - input.worldPosition); // Normalized direction to a light in worldspace
+            //attenuation = Attenuate(light, input.worldPosition); // Attenuation is only relevant to lights with a range
+        }
+        // For spot lights ONLY, consider the angle to the light's direction and scale attenuation accordingly
+        if(light.Type == LIGHT_TYPE_SPOT)
+        {
+            float pixelAngle = saturate(dot(-dirToLight, light.Direction));
+            float cosOuter = cos(light.SpotOuterAngle);
+            float cosInner = cos(light.SpotInnerAngle);
+            float falloffRange = cosOuter - cosInner;
+            float spotTerm = saturate((cosOuter - pixelAngle) / falloffRange);
             
-                break;
-            case LIGHT_TYPE_POINT:
-                dirToLight = normalize(light.Position - input.worldPosition);
-                attenuation = Attenuate(light, input.worldPosition);
-            
-                break;
-            case LIGHT_TYPE_SPOT:
-                dirToLight = normalize(light.Position - input.worldPosition);
-            
-                float pixelAngle = saturate(dot(-dirToLight, light.Direction));
-                float cosOuter = cos(light.SpotOuterAngle);
-                float cosInner = cos(light.SpotInnerAngle);
-                float falloffRange = cosOuter - cosInner;
-            
-                float spotTerm = saturate((cosOuter - pixelAngle) / falloffRange);
-            
-                attenuation = Attenuate(light, input.worldPosition) * spotTerm;
-                break;
+            //attenuation *= spotTerm;
         }
         
-        // Diffuse term = dot product of the direction to the light along the surface normal * light color * light intensity * surface color
-        float3 diffuseTerm = saturate(dot(finalNormal, dirToLight)) * light.Color * light.Intensity * surfaceColor.rgb;
+        // Calculate the light amounts
+        float diff = DiffusePBR(finalNormal, dirToLight);
+        float3 spec = MicrofacetBRDF(finalNormal, dirToLight, dirToCamera, roughness, f0);
         
-        // Reflect INCOMING light direction
-        float3 refl = reflect(light.Direction, finalNormal);
+        // Calculate diffuse with energy conservation, including cutting diffuse for metals
+        float3 h = normalize(dirToCamera + dirToLight);
+        float3 F = F_Schlick(dirToCamera, h, f0);
+        float3 balancedDiff = DiffuseEnergyConserve(diff, F, metalness);
         
-        // Calculate cosine of the reflection and camera vector
-        float RdotV = saturate(dot(refl, dirToCamera));
+        // Combine the final diffuse and specular values for this light
+        float3 total = (balancedDiff * albedoColor.rgb + spec) * light.Intensity * light.Color;
         
-        // Raise to a power equal to some "shininess"
-        float3 specularTerm = pow(max(RdotV, 0.0f), specExponent) * light.Color * light.Intensity;
-        
-        // Cut the specular if the diffuse contribution is zero
-        // - any() returns 1 if any component of the param is non-zero
-        // - In other words:
-        // - If the diffuse amount is 0, any(diffuse) returns 0
-        // - If the diffuse amount is != 0, any(diffuse) returns 1
-        // - So when diffuse is 0, specular becomes 0
-        specularTerm *= any(diffuseTerm);
-        
-        lightTotal = lightTotal + (diffuseTerm + specularTerm) * attenuation;
+        lightTotal = lightTotal + total;
     }
     
     return GammaCorrect(float4(lightTotal, 1), 1.0 / 2.2);

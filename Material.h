@@ -10,8 +10,7 @@ public:
 
 	Material(DirectX::XMFLOAT4 colorTint,
 		Microsoft::WRL::ComPtr<ID3D11VertexShader> vertexShader,
-		Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader,
-		float roughnessValue = 0.5f);
+		Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelShader);
 	~Material();
 
 	DirectX::XMFLOAT4 GetColorTint();
@@ -33,8 +32,6 @@ public:
 
 	void SetTextureOffset(DirectX::XMFLOAT2 offset);
 	DirectX::XMFLOAT2 GetTextureOffset();
-
-	float roughness;
 
 private:
 	

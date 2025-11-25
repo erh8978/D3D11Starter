@@ -17,8 +17,6 @@ struct PixelShaderExternalData
 	DirectX::XMFLOAT2 textureOffset;
 	float totalTime;
 	DirectX::XMFLOAT3 cameraPos;
-	float roughness;
-	DirectX::XMFLOAT3 backgroundColor;
 	Light lights[5];
 };
 
