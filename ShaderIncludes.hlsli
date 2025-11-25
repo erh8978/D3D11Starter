@@ -130,7 +130,6 @@ float3 MicrofacetBRDF(float3 n, float3 l, float3 v, float roughness, float3 f0)
     
     // Final formula
     return (D * F * G) / 4;
-
 }
 
 // Ensures that the object doesn't reflect more light than what hits it

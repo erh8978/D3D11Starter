@@ -413,8 +413,8 @@ void Game::CreateGameEntities()
 void Game::CreateStartingCameras()
 {
 	// First camera: set back from starting scene, standard FOV
-	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 1.5f, -5.0f), Window::AspectRatio()));
-	cameras[0]->SetPitchYawRoll(XMFLOAT3(0.3f, 0.0f, 0.0f));
+	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 1.5f, 5.0f), Window::AspectRatio()));
+	cameras[0]->SetPitchYawRoll(XMFLOAT3(0.3f, DirectX::XMConvertToRadians(180.0f), 0.0f));
 	// Second camera: further back from the starting scene, narrower FOV
 	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(1.0f, 0.0f, -10.0f), Window::AspectRatio(), 30.0f));
 }

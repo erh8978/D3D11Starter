@@ -50,6 +50,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     float metalness = MetalMap.Sample(BasicSampler, input.UV).r;
     float roughness = RoughnessMap.Sample(BasicSampler, input.UV).r;
     
+    
     // Calculate the unit vector to camera
     float3 dirToCamera = normalize(cameraPos - input.worldPosition);
     
@@ -94,6 +95,8 @@ float4 main(VertexToPixel input) : SV_TARGET
         float3 h = normalize(dirToCamera + dirToLight);
         float3 F = F_Schlick(dirToCamera, h, f0);
         float3 balancedDiff = DiffuseEnergyConserve(diff, F, metalness);
+        
+        return spec.rgbb;
         
         // Combine the final diffuse and specular values for this light
         float3 total = (balancedDiff * albedoColor.rgb + spec) * light.Intensity * light.Color;
