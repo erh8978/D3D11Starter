@@ -129,7 +129,7 @@ float3 MicrofacetBRDF(float3 n, float3 l, float3 v, float roughness, float3 f0)
     float  G = G_SchlickGGX(n, v, roughness) * G_SchlickGGX(n, l, roughness);
     
     // Final formula
-    return (D * F * G) / 4;
+    return (D * F * G) / 4 * saturate(dot(n, l));
 }
 
 // Ensures that the object doesn't reflect more light than what hits it

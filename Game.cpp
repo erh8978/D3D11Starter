@@ -423,8 +423,9 @@ void Game::CreateInitialLights()
 {
 	lights.push_back(Light::Directional(XMFLOAT3(0.0f, -0.45f, -0.9f), 1.0f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional light, from roughly the direction of the skybox's sun 
 	lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 0.0f, 1.0f))); // Blue directional light from the right
-	lights.push_back(Light::Point(XMFLOAT3(0.0f, 1.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 1.0f, 0.0f))); // Green point light above center
+	lights.push_back(Light::Point(XMFLOAT3(0.0f, 1.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 1.0f, 0.0f), 2.5f)); // Green point light above center
 	lights.push_back(Light::Spot(XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT3(2.0f, 1.0f, 0.0f), 0.75f, XMFLOAT3(1.0f, 1.0f, 1.0f), 5.0f, 0.2f, 0.25f)); // White spot light
+	lights.push_back(Light::Spot(XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT3(-5.0f, 0.0f, 0.0f), 2.0f, XMFLOAT3(1.0f, 0.0f, 0.0f), 5.0f, 0.1f, 0.5f)); // Red spot light pointing right
 }
 
 // --------------------------------------------------------

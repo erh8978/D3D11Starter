@@ -61,19 +61,19 @@ float4 main(VertexToPixel input) : SV_TARGET
     float3 lightTotal = float3(0.0f, 0.0f, 0.0f);
     
     // Loop for each light
-    for (int i = 0; i < 1; i++)
+    for (int i = 0; i < 5; i++)
     {
         Light light = lights[i]; // Assign current light to a variable for easy access
         light.Direction = normalize(light.Direction); // Normalize light's direction, if it has one
         
         float3 dirToLight = -light.Direction; // This will be replaced if light is Point or Spot; done to prevent "dirToLight potentially uninitialized" warning
-        //float attenuation = 1; // Default to 100% intensity
+        float attenuation = 1; // Default to 100% intensity
         
         // Calcualte dirToLight and attenuation for point and spot lights
         if(light.Type == LIGHT_TYPE_POINT || light.Type == LIGHT_TYPE_SPOT)
         {
             dirToLight = normalize(light.Position - input.worldPosition); // Normalized direction to a light in worldspace
-            //attenuation = Attenuate(light, input.worldPosition); // Attenuation is only relevant to lights with a range
+            attenuation = Attenuate(light, input.worldPosition); // Attenuation is only relevant to lights with a range
         }
         // For spot lights ONLY, consider the angle to the light's direction and scale attenuation accordingly
         if(light.Type == LIGHT_TYPE_SPOT)
@@ -84,20 +84,22 @@ float4 main(VertexToPixel input) : SV_TARGET
             float falloffRange = cosOuter - cosInner;
             float spotTerm = saturate((cosOuter - pixelAngle) / falloffRange);
             
-            //attenuation *= spotTerm;
+            attenuation *= spotTerm;
         }
+        
+        // Prepare variables for BRDF calculations
+        float3 h = normalize(dirToCamera + dirToLight); // Half vector between v and h
         
         // Calculate the light amounts
         float diff = DiffusePBR(finalNormal, dirToLight);
         float3 spec = MicrofacetBRDF(finalNormal, dirToLight, dirToCamera, roughness, f0);
         
         // Calculate diffuse with energy conservation, including cutting diffuse for metals
-        float3 h = normalize(dirToCamera + dirToLight);
         float3 F = F_Schlick(dirToCamera, h, f0);
         float3 balancedDiff = DiffuseEnergyConserve(diff, F, metalness);
         
         // Combine the final diffuse and specular values for this light
-        float3 total = (balancedDiff * albedoColor.rgb + spec) * light.Intensity * light.Color;
+        float3 total = (balancedDiff * albedoColor.rgb + spec) * light.Intensity * light.Color * attenuation;
         
         lightTotal = lightTotal + total;
     }
