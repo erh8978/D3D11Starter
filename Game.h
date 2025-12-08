@@ -35,14 +35,18 @@ private:
 	void CreateGameEntities();
 	void CreateStartingCameras();
 	void CreateInitialLights();
+	void InitializeShadowMapping(int shadowMapResolution);
+	void ResizeShadowMap(int shadowMapResolution);
 
 	// Done in Update()
+	void UpdateLightMatrices(Light light, float lightProjectionSize);
 	void UpdateCameras(float deltaTime);
 	void StartImGuiUpdate(float deltaTime);
 	void BuildCustomUI(float deltaTime);
 	
 	// Done in Draw()
 	void FrameStart();
+	void DrawShadowMap();
 	void DrawAllGameEntities(float totalTime);
 	void RenderImGui();
 	void FrameEnd();
@@ -76,5 +80,15 @@ private:
 	std::vector<Light> lights;
 	// Skybox
 	std::shared_ptr<Sky> skybox;
+	// Shadow mapping
+	Microsoft::WRL::ComPtr<ID3D11DepthStencilView> shadowDSV;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shadowSRV;
+	Microsoft::WRL::ComPtr<ID3D11RasterizerState> shadowRasterizer;
+	Microsoft::WRL::ComPtr<ID3D11SamplerState> shadowSampler;
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> shadowVS;
+	DirectX::XMFLOAT4X4 lightViewMatrix;
+	DirectX::XMFLOAT4X4 lightProjectionMatrix;
+	int _shadowMapResolution = 1024;
+	float _lightProjectionSize = 15.0f;
 };
 

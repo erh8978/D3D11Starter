@@ -8,6 +8,8 @@ struct VertexShaderExternalData
 	DirectX::XMFLOAT4X4 projectionMatrix;
 	DirectX::XMFLOAT4X4 viewMatrix;
 	DirectX::XMFLOAT4X4 worldInvTranspose;
+	DirectX::XMFLOAT4X4 lightView;
+	DirectX::XMFLOAT4X4 lightProjection;
 };
 
 struct PixelShaderExternalData

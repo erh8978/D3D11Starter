@@ -12,11 +12,13 @@ cbuffer ExternalData : register(b0)
 }
 
 // Texture and sampler state are bound with registers
-Texture2D Albedo		    : register(t0);
-Texture2D NormalMap         : register(t1);
-Texture2D MetalMap          : register(t2);
-Texture2D RoughnessMap      : register(t3);
-SamplerState BasicSampler   : register(s0);
+Texture2D Albedo		             : register(t0);
+Texture2D NormalMap                  : register(t1);
+Texture2D MetalMap                   : register(t2);
+Texture2D RoughnessMap               : register(t3);
+Texture2D ShadowMap                  : register(t4);
+SamplerState BasicSampler            : register(s0);
+SamplerComparisonState ShadowSampler : register(s1);
 
 // --------------------------------------------------------
 // The entry point (main method) for our pixel shader
@@ -29,6 +31,22 @@ SamplerState BasicSampler   : register(s0);
 // --------------------------------------------------------
 float4 main(VertexToPixel input) : SV_TARGET
 {   
+    // Perform the perspective divide (by W) ourselves for the shadow map position
+    input.shadowMapPos /= input.shadowMapPos.w;
+    
+    // Convert normalized device coords to UVs for sampling
+    float2 shadowUV = input.shadowMapPos.xy * 0.5f + 0.5f;
+    shadowUV.y = 1 - shadowUV.y; // Flip the Y
+    
+    // Calculate the distances we need: light-to-pixel and closest-surface
+    float distToLight = input.shadowMapPos.z;
+    
+    // Compare distance to light with shadow map
+    float shadowAmount = ShadowMap.SampleCmpLevelZero(
+        ShadowSampler,
+        shadowUV,
+        distToLight).r;
+    
     // (Ortho)normalize vectors as necessary
     input.Normal = normalize(input.Normal);
     input.Tangent = normalize(input.Tangent - dot(input.Tangent, input.Normal) * input.Normal);
@@ -100,6 +118,12 @@ float4 main(VertexToPixel input) : SV_TARGET
         
         // Combine the final diffuse and specular values for this light
         float3 total = (balancedDiff * albedoColor.rgb + spec) * light.Intensity * light.Color * attenuation;
+        
+        // If this is the first light, apply shadowing result
+        if(i == 0)
+        {
+            total *= shadowAmount;
+        }
         
         lightTotal = lightTotal + total;
     }

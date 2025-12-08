@@ -47,6 +47,7 @@ Game::Game()
 	CreateGameEntities();
 	CreateStartingCameras();
 	CreateInitialLights();
+	InitializeShadowMapping(_shadowMapResolution);
 
 	// Set initial graphics API state
 	//  - These settings persist until we change them
@@ -379,13 +380,20 @@ void Game::CreateGameEntities()
 		gameEntities[3]->GetTransform()->SetTranslation(0.0f, 0.0f, 0.0f);
 		gameEntities[4]->GetTransform()->SetTranslation(1.0f, 0.0f, 0.0f);
 		gameEntities[5]->GetTransform()->SetTranslation(2.0f, 0.0f, 0.0f);
-		gameEntities[6]->GetTransform()->SetTranslation(3.0f, 0.0f, 0.0f);
+		gameEntities[6]->GetTransform()->SetTranslation(3.0f, -1.0f, 0.0f); // Will be intersecting the floor to test for "Peter Panning"
 	}
 
 	// Make the entities smaller, so they aren't huge (for now)
 	for (unsigned int i = 0; i < gameEntities.size(); i++)
 	{
 		gameEntities[i]->GetTransform()->SetScale(0.3f, 0.3f, 0.3f);
+	}
+
+	// Create floor GameEntity
+	{
+		gameEntities.push_back(std::make_shared<GameEntity>(meshes[6], woodMaterial)); // Quad
+		gameEntities[gameEntities.size() - 1]->GetTransform()->SetTranslation(0.0f, -1.0f, 0.0f);
+		gameEntities[gameEntities.size() - 1]->GetTransform()->SetScale(20.0f, 20.0f, 20.0f);
 	}
 
 	// Create skybox object
@@ -419,14 +427,95 @@ void Game::CreateStartingCameras()
 	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(1.0f, 0.0f, -10.0f), Window::AspectRatio(), 30.0f));
 }
 
+
 void Game::CreateInitialLights()
 {
-	lights.push_back(Light::Directional(XMFLOAT3(0.0f, -0.45f, -0.9f), 1.0f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional light, from roughly the direction of the skybox's sun 
-	lights.push_back(Light::Directional(XMFLOAT3(-1.0f, 0.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 0.0f, 1.0f))); // Blue directional light from the right
+	lights.push_back(Light::Directional(XMFLOAT3(0.0f, -0.45f, -0.9f), 2.5f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional light, from roughly the direction of the skybox's sun 
+	lights.push_back(Light::Directional(XMFLOAT3(0.0f, -1.0f, 0.0f), 0.25f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional light from above
 	lights.push_back(Light::Point(XMFLOAT3(0.0f, 1.0f, 0.0f), 1.0f, XMFLOAT3(0.0f, 1.0f, 0.0f), 2.5f)); // Green point light above center
 	lights.push_back(Light::Spot(XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT3(2.0f, 1.0f, 0.0f), 0.75f, XMFLOAT3(1.0f, 1.0f, 1.0f), 5.0f, 0.2f, 0.25f)); // White spot light
 	lights.push_back(Light::Spot(XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT3(-5.0f, 0.0f, 0.0f), 2.0f, XMFLOAT3(1.0f, 0.0f, 0.0f), 5.0f, 0.1f, 0.5f)); // Red spot light pointing right
 }
+
+
+void Game::InitializeShadowMapping(int shadowMapResolution)
+{
+	// Create DSV and SRV
+	ResizeShadowMap(shadowMapResolution);
+
+	// Load the specialized vertex shader and store a pointer to it
+	shadowVS = LoadVertexShader(L"ShadowVS.cso");
+
+	// Create a rasterizer state for depth biasing
+	D3D11_RASTERIZER_DESC shadowRastDesc = {};
+	shadowRastDesc.FillMode = D3D11_FILL_SOLID;
+	shadowRastDesc.CullMode = D3D11_CULL_BACK;
+	shadowRastDesc.DepthClipEnable = false; // Keep out-of-frustum objects!
+	shadowRastDesc.DepthBias = 1000; // Minimum precision units, not world units!
+	shadowRastDesc.SlopeScaledDepthBias = 1.0f; // Bias more on a slope
+	Graphics::Device->CreateRasterizerState(&shadowRastDesc, shadowRasterizer.GetAddressOf());
+
+	// Create a sampler for shadow comparison
+	D3D11_SAMPLER_DESC shadowSamplerDesc = {};
+	shadowSamplerDesc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR;
+	shadowSamplerDesc.ComparisonFunc = D3D11_COMPARISON_LESS;
+	shadowSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
+	shadowSamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
+	shadowSamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
+	shadowSamplerDesc.BorderColor[0] = 1.0f; // Only need the first component
+	Graphics::Device->CreateSamplerState(&shadowSamplerDesc, shadowSampler.GetAddressOf());
+}
+
+
+// -------------------------------------------------------------------------------------------------------------
+// Used by InitializeShadowMapping() to create DSV and SRV for shadow mapping, and in ImGUI to resize on the fly
+// -------------------------------------------------------------------------------------------------------------
+void Game::ResizeShadowMap(int shadowMapResolution)
+{
+	// Release existing DSV and SRV
+	if (shadowDSV != nullptr) shadowDSV->Release();
+	if (shadowSRV != nullptr) shadowSRV->Release();
+
+	// Create the texture that will hold the shadow map on the GPU
+	D3D11_TEXTURE2D_DESC shadowDesc = {};
+	shadowDesc.Width = shadowMapResolution;
+	shadowDesc.Height = shadowMapResolution;
+	shadowDesc.ArraySize = 1;
+	shadowDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+	shadowDesc.CPUAccessFlags = 0;
+	shadowDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+	shadowDesc.MipLevels = 1;
+	shadowDesc.MiscFlags = 0;
+	shadowDesc.SampleDesc.Count = 1;
+	shadowDesc.SampleDesc.Quality = 0;
+	shadowDesc.Usage = D3D11_USAGE_DEFAULT;
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> shadowTexture;
+	Graphics::Device->CreateTexture2D(&shadowDesc, 0, shadowTexture.GetAddressOf());
+
+	// Create depth/stencil view
+	D3D11_DEPTH_STENCIL_VIEW_DESC shadowDSDesc = {};
+	shadowDSDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	shadowDSDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	shadowDSDesc.Texture2D.MipSlice = 0;
+	Graphics::Device->CreateDepthStencilView(
+		shadowTexture.Get(),
+		&shadowDSDesc,
+		shadowDSV.GetAddressOf()
+	);
+
+	// Create SRV
+	D3D11_SHADER_RESOURCE_VIEW_DESC shadowSRVDesc = {};
+	shadowSRVDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	shadowSRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	shadowSRVDesc.Texture2D.MipLevels = 1;
+	shadowSRVDesc.Texture2D.MostDetailedMip = 0;
+	Graphics::Device->CreateShaderResourceView(
+		shadowTexture.Get(),
+		&shadowSRVDesc,
+		shadowSRV.GetAddressOf()
+	);
+}
+
 
 // --------------------------------------------------------
 // Update your game here - user input, move objects, AI, etc.
@@ -437,16 +526,69 @@ void Game::Update(float deltaTime, float totalTime)
 	if (Input::KeyDown(VK_ESCAPE))
 		Window::Quit();
 
-	for (unsigned int i = 0; i < gameEntities.size(); i++)
+	for (unsigned int i = 0; i < gameEntities.size() - 1; i++)
 	{
 		gameEntities[i]->GetTransform()->Rotate(0.0f, 1.0f * deltaTime, 0.0f);
 	}
+
+	// Move one entity up and down
+	gameEntities[3]->GetTransform()->SetTranslation(0.0f, sin(totalTime) * 0.5f, 0.0f);
+
+	UpdateLightMatrices(lights[0], _lightProjectionSize);
 
 	UpdateCameras(deltaTime);
 
 	StartImGuiUpdate(deltaTime);
 
 	BuildCustomUI(deltaTime);
+}
+
+
+void Game::UpdateLightMatrices(Light light, float lightProjectionSize)
+{
+	// View Matrix
+	{
+		// If the given light isn't directional, print a message and quit
+		if (light.Type != LIGHT_TYPE_DIRECTIONAL)
+		{
+			printf("Tried to update shadow maps with a non-directional Light.\n");
+			return;
+		}
+
+		XMVECTOR lightDirection = XMVector3Normalize(XMLoadFloat3(&light.Direction));
+
+		XMVECTOR upVector = {};
+
+		if (light.Direction.y <= -1.0f && light.Direction.x == 0.0f && light.Direction.z == 0.0f)
+		{
+			printf("Light is pointing straight down.");
+			upVector = XMVectorSet(1, 0, 0, 0);
+		}
+		else
+		{
+			upVector = XMVectorSet(0, 1, 0, 0);
+		}
+
+		XMMATRIX lightView = XMMatrixLookToLH(
+			-lightDirection * 20,	// Position: "Backed up" from the world's origin by 20 units
+			lightDirection,			// Direction: Light's direction
+			upVector				// Up: World up (positive Y axis, unless light direction is straight down)
+		);
+
+		XMStoreFloat4x4(&lightViewMatrix, lightView); // Store the result
+	}
+	
+	// Projection Matrix
+	{
+		XMMATRIX lightProjection = XMMatrixOrthographicLH(
+			lightProjectionSize,
+			lightProjectionSize,
+			1.0f,
+			100.0f
+		);
+
+		XMStoreFloat4x4(&lightProjectionMatrix, lightProjection);
+	}
 }
 
 
@@ -498,204 +640,226 @@ void Game::StartImGuiUpdate(float deltaTime)
 // --------------------------------
 void Game::BuildCustomUI(float deltaTime)
 {
-	{ // Any ImGui methods called between ImGui::Begin() and ImGui::End() will be placed in a new window.
-		ImGui::Begin("540 ImGui Window");
+	// Any ImGui methods called between ImGui::Begin() and ImGui::End() will be placed in a new window.
+	ImGui::Begin("540 ImGui Window");
 
-		ImGui::Text("Camera Controls");
-		ImGui::Text("	W / S: Forwards / Backwards");
-		ImGui::Text("	A / D: Left / Right");
-		ImGui::Text("	Q / E: Down / Up");
-		ImGui::Text("	LMB + Drag: Rotate");
+	ImGui::Text("Camera Controls");
+	ImGui::Text("	W / S: Forwards / Backwards");
+	ImGui::Text("	A / D: Left / Right");
+	ImGui::Text("	Q / E: Down / Up");
+	ImGui::Text("	LMB + Drag: Rotate");
 
-		// ImGui provides a variable for framerate, so use that
-		float framerate = ImGui::GetIO().Framerate;
-		ImGui::Text("Framerate: %f fps", framerate);
+	// ImGui provides a variable for framerate, so use that
+	float framerate = ImGui::GetIO().Framerate;
+	ImGui::Text("Framerate: %f fps", framerate);
 
-		int width = Window::Width();
-		int height = Window::Height();
-		ImGui::Text("Window Dimensions: %ix%ip", width, height);
+	int width = Window::Width();
+	int height = Window::Height();
+	ImGui::Text("Window Dimensions: %ix%ip", width, height);
 
-		// Dropdown tree with info on each Mesh
-		if (ImGui::TreeNode("Mesh Info"))
+	// Dropdown tree with info on each Mesh
+	if (ImGui::TreeNode("Mesh Info"))
+	{
+		// Tree node for each Mesh's info
+		for (unsigned int i = 0; i < meshes.size(); i++)
 		{
-			// Tree node for each Mesh's info
-			for (unsigned int i = 0; i < meshes.size(); i++)
+			std::shared_ptr<Mesh> currentMesh = meshes[i];
+			const char* currentMeshName = currentMesh->meshName.c_str();
+
+			ImGui::PushID(i);
+
+			if (ImGui::TreeNode("Mesh: %s", currentMeshName))
 			{
-				std::shared_ptr<Mesh> currentMesh = meshes[i];
-				const char* currentMeshName = currentMesh->meshName.c_str();
+				unsigned int numVertices = currentMesh->GetVertexCount();
+				unsigned int numIndices = currentMesh->GetIndexCount();
+				unsigned int numTriangles = numIndices / 3;
 
-				ImGui::PushID(i);
+				ImGui::Text("Triangles: %i", numTriangles);
+				ImGui::Text("Vertices: %i", numVertices);
+				ImGui::Text("Indicies: %i", numIndices);
 
-				if (ImGui::TreeNode("Mesh: %s", currentMeshName))
+				// Has to be done at the end of each tree node!
+				ImGui::TreePop();
+			}
+
+			ImGui::PopID();
+		}
+
+		// Has to be done at the end of each tree node!
+		ImGui::TreePop();
+	}
+
+	if (ImGui::TreeNode("Entity Info"))
+	{
+		for (unsigned int i = 0; i < gameEntities.size(); i++)
+		{
+			std::shared_ptr<GameEntity> currentEntity = gameEntities[i];
+			const char* currentEntityMeshName = currentEntity->GetMesh()->meshName.c_str();
+			std::shared_ptr<Transform> currentTransform = currentEntity->GetTransform();
+			std::shared_ptr<Material> currentMaterial = currentEntity->GetMaterial();
+
+			ImGui::PushID(i);
+
+			if (ImGui::TreeNode("Entity: %s", currentEntityMeshName))
+			{
+				XMFLOAT3 currentTranslation = currentTransform->GetTranslation();
+				XMFLOAT3 currentRotation = currentTransform->GetPitchYawRoll();
+				XMFLOAT3 currentScale = currentTransform->GetScale();
+
+				ImGui::DragFloat3("Position", &currentTranslation.x, 0.1f);
+				ImGui::DragFloat3("Rotation", &currentRotation.x, 0.1f);
+				ImGui::DragFloat3("Scale", &currentScale.x, 0.1f);
+
+				currentTransform->SetTranslation(currentTranslation);
+				currentTransform->SetPitchYawRoll(currentRotation);
+				currentTransform->SetScale(currentScale);
+
+				if (ImGui::TreeNode("Material"))
 				{
-					unsigned int numVertices = currentMesh->GetVertexCount();
-					unsigned int numIndices = currentMesh->GetIndexCount();
-					unsigned int numTriangles = numIndices / 3;
+					XMFLOAT2 currentTextureScale = currentMaterial->GetTextureScale();
+					XMFLOAT2 currentTextureOffset = currentMaterial->GetTextureOffset();
 
-					ImGui::Text("Triangles: %i", numTriangles);
-					ImGui::Text("Vertices: %i", numVertices);
-					ImGui::Text("Indicies: %i", numIndices);
+					ImGui::DragFloat2("Scale", &currentTextureScale.x, 0.1f);
+					ImGui::DragFloat2("Offset", &currentTextureOffset.x, 0.1f);
+
+					currentMaterial->SetTextureScale(currentTextureScale);
+					currentMaterial->SetTextureOffset(currentTextureOffset);
 
 					// Has to be done at the end of each tree node!
 					ImGui::TreePop();
 				}
 
-				ImGui::PopID();
+				// Has to be done at the end of each tree node!
+				ImGui::TreePop();
 			}
 
-			// Has to be done at the end of each tree node!
-			ImGui::TreePop();
+			ImGui::PopID();
 		}
 
-		if (ImGui::TreeNode("Entity Info"))
+		// Has to be done at the end of each tree node!
+		ImGui::TreePop();
+	}
+
+	// Dropdown for active camera info
+	if (ImGui::TreeNode("Active Camera"))
+	{
+		ImGui::Text("Camera # %i", currentCameraIndex);
+		if (ImGui::Button("Previous"))
 		{
-			for (unsigned int i = 0; i < gameEntities.size(); i++)
-			{
-				std::shared_ptr<GameEntity> currentEntity = gameEntities[i];
-				const char* currentEntityMeshName = currentEntity->GetMesh()->meshName.c_str();
-				std::shared_ptr<Transform> currentTransform = currentEntity->GetTransform();
-				std::shared_ptr<Material> currentMaterial = currentEntity->GetMaterial();
-
-				ImGui::PushID(i);
-
-				if (ImGui::TreeNode("Entity: %s", currentEntityMeshName))
-				{
-					XMFLOAT3 currentTranslation = currentTransform->GetTranslation();
-					XMFLOAT3 currentRotation = currentTransform->GetPitchYawRoll();
-					XMFLOAT3 currentScale = currentTransform->GetScale();
-
-					ImGui::DragFloat3("Position", &currentTranslation.x, 0.1f);
-					ImGui::DragFloat3("Rotation", &currentRotation.x, 0.1f);
-					ImGui::DragFloat3("Scale", &currentScale.x, 0.1f);
-
-					currentTransform->SetTranslation(currentTranslation);
-					currentTransform->SetPitchYawRoll(currentRotation);
-					currentTransform->SetScale(currentScale);
-
-					if (ImGui::TreeNode("Material"))
-					{
-						XMFLOAT2 currentTextureScale = currentMaterial->GetTextureScale();
-						XMFLOAT2 currentTextureOffset = currentMaterial->GetTextureOffset();
-
-						ImGui::DragFloat2("Scale", &currentTextureScale.x, 0.1f);
-						ImGui::DragFloat2("Offset", &currentTextureOffset.x, 0.1f);
-
-						currentMaterial->SetTextureScale(currentTextureScale);
-						currentMaterial->SetTextureOffset(currentTextureOffset);
-
-						// Has to be done at the end of each tree node!
-						ImGui::TreePop();
-					}
-
-					// Has to be done at the end of each tree node!
-					ImGui::TreePop();
-				}
-
-				ImGui::PopID();
-			}
-
-			// Has to be done at the end of each tree node!
-			ImGui::TreePop();
+			currentCameraIndex = (currentCameraIndex - 1) % cameras.size();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Next"))
+		{
+			currentCameraIndex = (currentCameraIndex + 1) % cameras.size();
 		}
 
-		// Dropdown for active camera info
-		if (ImGui::TreeNode("Active Camera"))
+		XMFLOAT3 cameraPos = cameras[currentCameraIndex]->GetTranslation();
+		XMFLOAT3 cameraRot = cameras[currentCameraIndex]->GetPitchYawRoll();
+		float cameraFov = cameras[currentCameraIndex]->GetFovDegrees();
+		ImGui::Text("Translation: (%f, %f, %f)", cameraPos.x, cameraPos.y, cameraPos.z);
+		ImGui::Text("Pitch, Yaw, Roll: (%f, %f, %f)", cameraRot.x, cameraRot.y, cameraRot.z);
+		ImGui::Text("FOV (Degrees): %f", cameraFov);
+
+		// Has to be done at the end of each tree node!
+		ImGui::TreePop();
+	}
+
+	// Lights
+	if (ImGui::TreeNode("Lights"))
+	{
+		for (unsigned int i = 0; i < lights.size(); i++)
 		{
-			ImGui::Text("Camera # %i", currentCameraIndex);
-			if (ImGui::Button("Previous"))
+			std::string lightType = "Light";
+
+			switch (lights[i].Type)
 			{
-				currentCameraIndex = (currentCameraIndex - 1) % cameras.size();
+			case LIGHT_TYPE_DIRECTIONAL:
+				lightType = "Directional Light";
+				break;
+			case LIGHT_TYPE_POINT:
+				lightType = "Point Light";
+				break;
+			case LIGHT_TYPE_SPOT:
+				lightType = "Spot Light";
+				break;
 			}
-			ImGui::SameLine();
-			if (ImGui::Button("Next"))
+
+			ImGui::PushID(i);
+
+			if (ImGui::TreeNode(lightType.c_str()))
 			{
-				currentCameraIndex = (currentCameraIndex + 1) % cameras.size();
-			}
-
-			XMFLOAT3 cameraPos = cameras[currentCameraIndex]->GetTranslation();
-			XMFLOAT3 cameraRot = cameras[currentCameraIndex]->GetPitchYawRoll();
-			float cameraFov = cameras[currentCameraIndex]->GetFovDegrees();
-			ImGui::Text("Translation: (%f, %f, %f)", cameraPos.x, cameraPos.y, cameraPos.z);
-			ImGui::Text("Pitch, Yaw, Roll: (%f, %f, %f)", cameraRot.x, cameraRot.y, cameraRot.z);
-			ImGui::Text("FOV (Degrees): %f", cameraFov);
-
-			// Has to be done at the end of each tree node!
-			ImGui::TreePop();
-		}
-
-		// Lights
-		if (ImGui::TreeNode("Lights"))
-		{
-			for (unsigned int i = 0; i < lights.size(); i++)
-			{
-				std::string lightType = "Light";
-
 				switch (lights[i].Type)
 				{
 				case LIGHT_TYPE_DIRECTIONAL:
-					lightType = "Directional Light";
+					ImGui::Text("Light %i", i);
+					ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
+					ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
+					ImGui::DragFloat3("Direction", &lights[i].Direction.x, 0.1f);
+
 					break;
+
 				case LIGHT_TYPE_POINT:
-					lightType = "Point Light";
+					ImGui::Text("Light %i", i);
+					ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
+					ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
+					ImGui::DragFloat3("Position", &lights[i].Position.x, 0.1f);
+					ImGui::DragFloat("Range", &lights[i].Range, 0.1f);
+
 					break;
+
 				case LIGHT_TYPE_SPOT:
-					lightType = "Spot Light";
+					ImGui::Text("Light %i", i);
+					ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
+					ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
+					ImGui::DragFloat3("Position", &lights[i].Position.x, 0.1f);
+					ImGui::DragFloat3("Direction", &lights[i].Direction.x, 0.1f);
+					ImGui::DragFloat("Range", &lights[i].Range, 0.1f);
+					ImGui::DragFloat("Inner Angle", &lights[i].SpotInnerAngle, 0.01f, 0.0f, lights[i].SpotOuterAngle - 0.001f);
+					ImGui::DragFloat("Outer Angle", &lights[i].SpotOuterAngle, 0.01f, lights[i].SpotInnerAngle + 0.001f, D3D11_FLOAT32_MAX);
+
 					break;
 				}
 
-				ImGui::PushID(i);
-
-				if (ImGui::TreeNode(lightType.c_str()))
-				{
-					switch (lights[i].Type)
-					{
-					case LIGHT_TYPE_DIRECTIONAL:
-						ImGui::Text("Light %i", i);
-						ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
-						ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
-						ImGui::DragFloat3("Direction", &lights[i].Direction.x, 0.1f);
-
-						break;
-
-					case LIGHT_TYPE_POINT:
-						ImGui::Text("Light %i", i);
-						ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
-						ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
-						ImGui::DragFloat3("Position", &lights[i].Position.x, 0.1f);
-						ImGui::DragFloat("Range", &lights[i].Range, 0.1f);
-
-						break;
-
-					case LIGHT_TYPE_SPOT:
-						ImGui::Text("Light %i", i);
-						ImGui::ColorEdit3("Light Color", &lights[i].Color.x);
-						ImGui::DragFloat("Intensity", &lights[i].Intensity, 0.1f, 0.0f, D3D11_FLOAT32_MAX);
-						ImGui::DragFloat3("Position", &lights[i].Position.x, 0.1f);
-						ImGui::DragFloat3("Direction", &lights[i].Direction.x, 0.1f);
-						ImGui::DragFloat("Range", &lights[i].Range, 0.1f);
-						ImGui::DragFloat("Inner Angle", &lights[i].SpotInnerAngle, 0.01f, 0.0f, lights[i].SpotOuterAngle - 0.001f);
-						ImGui::DragFloat("Outer Angle", &lights[i].SpotOuterAngle, 0.01f, lights[i].SpotInnerAngle + 0.001f, D3D11_FLOAT32_MAX);
-
-						break;
-					}
-
-					ImGui::TreePop();
-				}
-
-				ImGui::PopID();
+				ImGui::TreePop();
 			}
 
-			ImGui::TreePop();
+			ImGui::PopID();
 		}
 
-		if (ImGui::Button("Show/Hide ImGui Demo Window"))
-		{
-			showImGuiDemoWindow = !showImGuiDemoWindow;
-		}
-
-		// This goes last!
-		ImGui::End();
+		ImGui::TreePop();
 	}
+
+	// Shadows
+	if (ImGui::TreeNode("Shadows"))
+	{
+		ImGui::Text("Shadow Resolution: %i", _shadowMapResolution);
+
+		if (ImGui::Button("Decrease Resolution") && _shadowMapResolution > 64)
+		{
+			_shadowMapResolution /= 2;
+			ResizeShadowMap(_shadowMapResolution);
+		}
+		if (ImGui::Button("Increase Resolution") && _shadowMapResolution < 16384)
+		{
+			_shadowMapResolution *= 2;
+			ResizeShadowMap(_shadowMapResolution);
+		}
+
+		ImGui::DragFloat("Projection Size", &_lightProjectionSize, 0.1f, 1.0f, D3D11_FLOAT32_MAX);
+
+		ImGui::Image(shadowSRV.Get(), ImVec2(512, 512));
+
+		ImGui::TreePop();
+	}
+
+	if (ImGui::Button("Show/Hide ImGui Demo Window"))
+	{
+		showImGuiDemoWindow = !showImGuiDemoWindow;
+	}
+
+	// This goes last!
+	ImGui::End();
 }
 
 
@@ -705,6 +869,8 @@ void Game::BuildCustomUI(float deltaTime)
 void Game::Draw(float deltaTime, float totalTime)
 {
 	FrameStart();
+
+	DrawShadowMap();
 
 	// DRAW geometry
 	// - These steps are generally repeated for EACH object you draw
@@ -738,6 +904,67 @@ void Game::FrameStart()
 }
 
 
+void Game::DrawShadowMap()
+{
+	// 1: Clear shadow map
+	Graphics::Context->ClearDepthStencilView(shadowDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
+
+	// 2: Set up output merger state
+	ID3D11RenderTargetView* nullRTV{};
+	Graphics::Context->OMSetRenderTargets(1, &nullRTV, shadowDSV.Get());
+
+	// 3: Deactivate pixel shader
+	Graphics::Context->PSSetShader(0, 0, 0);
+
+	// 4: Change viewport
+	D3D11_VIEWPORT viewport = {};
+	viewport.Width = (float)_shadowMapResolution;
+	viewport.Height = (float)_shadowMapResolution;
+	viewport.MaxDepth = 1.0f;
+	Graphics::Context->RSSetViewports(1, &viewport);
+
+	// 5: Entity render loop
+	Graphics::Context->VSSetShader(shadowVS.Get(), 0, 0);
+	Graphics::Context->RSSetState(shadowRasterizer.Get());
+
+	struct ShadowVertexShaderExternalData
+	{
+		XMFLOAT4X4 world;
+		XMFLOAT4X4 view;
+		XMFLOAT4X4 projection;
+	};
+
+	ShadowVertexShaderExternalData vsData = {};
+	vsData.view = lightViewMatrix;
+	vsData.projection = lightProjectionMatrix;
+
+	// Loop and draw all entities
+	for (auto& e : gameEntities)
+	{
+		vsData.world = e->GetTransform()->GetWorldMatrix();
+		Graphics::FillAndBindNextConstantBuffer(
+			&vsData,
+			sizeof(ShadowVertexShaderExternalData),
+			D3D11_VERTEX_SHADER,
+			0
+		);
+
+		e->Draw();
+	}
+
+	// 6: Reset the pipeline
+	viewport.Width  = (float)Window::Width();
+	viewport.Height = (float)Window::Height();
+	Graphics::Context->RSSetViewports(1, &viewport);
+	Graphics::Context->OMSetRenderTargets(
+		1,
+		Graphics::BackBufferRTV.GetAddressOf(),
+		Graphics::DepthBufferDSV.Get()
+	);
+	Graphics::Context->RSSetState(0);
+}
+
+
 // ------------------------------------------------
 // Loops through the Meshes list and draws each one
 // ------------------------------------------------
@@ -756,6 +983,8 @@ void Game::DrawAllGameEntities(float totalTime)
 		vsData.viewMatrix = cameras[currentCameraIndex]->GetViewMatrix();
 		vsData.projectionMatrix = cameras[currentCameraIndex]->GetProjectionMatrix();
 		vsData.worldInvTranspose = gameEntities[i]->GetTransform()->GetWorldInvTranspose();
+		vsData.lightView = lightViewMatrix;
+		vsData.lightProjection = lightProjectionMatrix;
 
 		// Send the data to the ring buffer using the function in Graphics
 		Graphics::FillAndBindNextConstantBuffer(
@@ -784,7 +1013,11 @@ void Game::DrawAllGameEntities(float totalTime)
 		// Bind texture shader resource views and samplers
 		gameEntities[i]->GetMaterial()->BindTexturesAndSamplers();
 
-		// Now that the shader has access to the correct world matrix, draw the entity's Mesh
+		// Bind shadow map texture and sampler state
+		Graphics::Context->PSSetShaderResources(4, 1, shadowSRV.GetAddressOf());
+		Graphics::Context->PSSetSamplers(1, 1, shadowSampler.GetAddressOf());
+
+		// Now that the shaders have access to the correct data, draw the entity's Mesh
 		gameEntities[i]->Draw();
 	}
 }
@@ -817,6 +1050,10 @@ void Game::FrameEnd()
 			1,
 			Graphics::BackBufferRTV.GetAddressOf(),
 			Graphics::DepthBufferDSV.Get());
+
+		// Unbind all SRVs at the end of the frame, so shadow maps aren't bound as both a depth buffer and a shader resource at the same time
+		ID3D11ShaderResourceView* nullSRVs[128] = {};
+		Graphics::Context->PSSetShaderResources(0, 128, nullSRVs);
 	}
 }
 

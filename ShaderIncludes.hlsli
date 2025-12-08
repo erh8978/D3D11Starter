@@ -57,6 +57,7 @@ struct VertexToPixel
     float3 Normal           : NORMAL; // Surface normal
     float3 worldPosition    : POSITION; // World space position
     float3 Tangent          : TANGENT; // Texture tangent vector
+    float4 shadowMapPos     : SHADOW_POSITION; // Shadow map position
 };
 
 struct SkyboxVertexToPixel
