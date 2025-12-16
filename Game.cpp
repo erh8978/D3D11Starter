@@ -48,6 +48,7 @@ Game::Game()
 	CreateStartingCameras();
 	CreateInitialLights();
 	InitializeShadowMapping(_shadowMapResolution);
+	InitializePostProcessing();
 
 	// Set initial graphics API state
 	//  - These settings persist until we change them
@@ -451,7 +452,7 @@ void Game::InitializeShadowMapping(int shadowMapResolution)
 	shadowRastDesc.FillMode = D3D11_FILL_SOLID;
 	shadowRastDesc.CullMode = D3D11_CULL_BACK;
 	shadowRastDesc.DepthClipEnable = false; // Keep out-of-frustum objects!
-	shadowRastDesc.DepthBias = 1000; // Minimum precision units, not world units!
+	shadowRastDesc.DepthBias = 10000; // Minimum precision units, not world units!
 	shadowRastDesc.SlopeScaledDepthBias = 1.0f; // Bias more on a slope
 	Graphics::Device->CreateRasterizerState(&shadowRastDesc, shadowRasterizer.GetAddressOf());
 
@@ -472,10 +473,6 @@ void Game::InitializeShadowMapping(int shadowMapResolution)
 // -------------------------------------------------------------------------------------------------------------
 void Game::ResizeShadowMap(int shadowMapResolution)
 {
-	// Release existing DSV and SRV
-	if (shadowDSV != nullptr) shadowDSV->Release();
-	if (shadowSRV != nullptr) shadowSRV->Release();
-
 	// Create the texture that will hold the shadow map on the GPU
 	D3D11_TEXTURE2D_DESC shadowDesc = {};
 	shadowDesc.Width = shadowMapResolution;
@@ -500,7 +497,7 @@ void Game::ResizeShadowMap(int shadowMapResolution)
 	Graphics::Device->CreateDepthStencilView(
 		shadowTexture.Get(),
 		&shadowDSDesc,
-		shadowDSV.GetAddressOf()
+		shadowDSV.ReleaseAndGetAddressOf()
 	);
 
 	// Create SRV
@@ -512,10 +509,96 @@ void Game::ResizeShadowMap(int shadowMapResolution)
 	Graphics::Device->CreateShaderResourceView(
 		shadowTexture.Get(),
 		&shadowSRVDesc,
-		shadowSRV.GetAddressOf()
+		shadowSRV.ReleaseAndGetAddressOf()
 	);
 }
 
+
+// -------------------------------------------------------
+// Creates all necessary D3D11 objects for post-processing
+// -------------------------------------------------------
+void Game::InitializePostProcessing()
+{
+	// Describe and create sampler state
+	D3D11_SAMPLER_DESC ppSamplerDesc = {};
+	ppSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+	ppSamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+	ppSamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+	ppSamplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	ppSamplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+	Graphics::Device->CreateSamplerState(&ppSamplerDesc, ppSampler.GetAddressOf());
+
+	ResizePostProcessing();
+
+	// Load post-processing shaders
+	fullscreenVS = LoadVertexShader(L"FullscreenVS.cso");
+	blurPS = LoadPixelShader(L"BlurPS.cso");
+	pixelizationPS = LoadPixelShader(L"PixelizationPS.cso");
+}
+
+
+// -------------------------------------------------------------------------------------------
+// Used by InitializePostProcessing() and OnResize() to create RTV and SRV for post processing
+// -------------------------------------------------------------------------------------------
+void Game::ResizePostProcessing()
+{
+	// Describe texture for initial render results (initial render -> blur)
+	D3D11_TEXTURE2D_DESC blurTextureDesc = {};
+	blurTextureDesc.Width = Window::Width();
+	blurTextureDesc.Height = Window::Height();
+	blurTextureDesc.ArraySize = 1;
+	blurTextureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+	blurTextureDesc.CPUAccessFlags = 0;
+	blurTextureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	blurTextureDesc.MipLevels = 1;
+	blurTextureDesc.MiscFlags = 0;
+	blurTextureDesc.SampleDesc.Count = 1;
+	blurTextureDesc.SampleDesc.Quality = 0;
+	blurTextureDesc.Usage = D3D11_USAGE_DEFAULT;
+
+	// Create the texture
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> blurTexture;
+	Graphics::Device->CreateTexture2D(&blurTextureDesc, 0, blurTexture.GetAddressOf());
+	
+	// Create RTV for blur effect
+	D3D11_RENDER_TARGET_VIEW_DESC blurRtvDesc = {};
+	blurRtvDesc.Format = blurTextureDesc.Format;
+	blurRtvDesc.Texture2D.MipSlice = 0;
+	blurRtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	Graphics::Device->CreateRenderTargetView(blurTexture.Get(), &blurRtvDesc, blurRTV.ReleaseAndGetAddressOf());
+
+	// Create SRV for blur effect
+	// Passing a null description for the SRV gets us a "default" SRV with full access to the resource
+	Graphics::Device->CreateShaderResourceView(blurTexture.Get(), 0, blurSRV.ReleaseAndGetAddressOf());
+
+	// Describe texture for secondary render results (blur -> pixelization)
+	D3D11_TEXTURE2D_DESC pixelizationTextureDesc = {};
+	pixelizationTextureDesc.Width = Window::Width();
+	pixelizationTextureDesc.Height = Window::Height();
+	pixelizationTextureDesc.ArraySize = 1;
+	pixelizationTextureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+	pixelizationTextureDesc.CPUAccessFlags = 0;
+	pixelizationTextureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	pixelizationTextureDesc.MipLevels = 1;
+	pixelizationTextureDesc.MiscFlags = 0;
+	pixelizationTextureDesc.SampleDesc.Count = 1;
+	pixelizationTextureDesc.SampleDesc.Quality = 0;
+	pixelizationTextureDesc.Usage = D3D11_USAGE_DEFAULT;
+
+	// Create the texture
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelizationTexture;
+	Graphics::Device->CreateTexture2D(&pixelizationTextureDesc, 0, pixelizationTexture.GetAddressOf());
+
+	// Create RTV for pixelization effect
+	D3D11_RENDER_TARGET_VIEW_DESC pixelizationRtvDesc = {};
+	pixelizationRtvDesc.Format = pixelizationTextureDesc.Format;
+	pixelizationRtvDesc.Texture2D.MipSlice = 0;
+	pixelizationRtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	Graphics::Device->CreateRenderTargetView(pixelizationTexture.Get(), &pixelizationRtvDesc, pixelizationRTV.ReleaseAndGetAddressOf());
+
+	// Create SRV for pixelization effect
+	Graphics::Device->CreateShaderResourceView(pixelizationTexture.Get(), 0, pixelizationSRV.ReleaseAndGetAddressOf());
+}
 
 // --------------------------------------------------------
 // Update your game here - user input, move objects, AI, etc.
@@ -853,6 +936,15 @@ void Game::BuildCustomUI(float deltaTime)
 		ImGui::TreePop();
 	}
 
+	// Post-Processing
+	if (ImGui::TreeNode("Post-Processing"))
+	{
+		ImGui::DragInt("Blur Radius", &_blurRadius, 0.5f, 0, 50);
+		ImGui::DragInt("Pixel Size", &_pixelSize, 0.5f, 1, 25);
+
+		ImGui::TreePop();
+	}
+
 	if (ImGui::Button("Show/Hide ImGui Demo Window"))
 	{
 		showImGuiDemoWindow = !showImGuiDemoWindow;
@@ -881,8 +973,11 @@ void Game::Draw(float deltaTime, float totalTime)
 	// It goes after geometry so we don't waste time drawing stuff that'll be drawn over anyways!
 	skybox->Draw(cameras[currentCameraIndex]);
 
+	// Do post-processing AFTER geometry is rendered, but BEFORE UI is rendered
+	DrawPostProcessing();
+
 	// Draw ImGui last, so it appears over everything else.
-	RenderImGui();
+	DrawImGui();
 
 	FrameEnd();
 }
@@ -900,6 +995,9 @@ void Game::FrameStart()
 		// Clear the back buffer (erase what's on screen) and depth buffer
 		Graphics::Context->ClearRenderTargetView(Graphics::BackBufferRTV.Get(), &ambientColor.x);
 		Graphics::Context->ClearDepthStencilView(Graphics::DepthBufferDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
+
+		// Clear post-processing render targets
+		Graphics::Context->ClearRenderTargetView(blurRTV.Get(), &ambientColor.x);
 	}
 }
 
@@ -958,7 +1056,7 @@ void Game::DrawShadowMap()
 	Graphics::Context->RSSetViewports(1, &viewport);
 	Graphics::Context->OMSetRenderTargets(
 		1,
-		Graphics::BackBufferRTV.GetAddressOf(),
+		blurRTV.GetAddressOf(), // Instead of drawing to the back buffer, draw to the post processing RTV
 		Graphics::DepthBufferDSV.Get()
 	);
 	Graphics::Context->RSSetState(0);
@@ -1023,10 +1121,47 @@ void Game::DrawAllGameEntities(float totalTime)
 }
 
 
+void Game::DrawPostProcessing()
+{
+	// Blur results -> pixelization RTV
+	Graphics::Context->OMSetRenderTargets(1, pixelizationRTV.GetAddressOf(), 0);
+
+	// Activate shaders and bind resources
+	Graphics::Context->VSSetShader(fullscreenVS.Get(), 0, 0);
+	Graphics::Context->PSSetShader(blurPS.Get(), 0, 0);
+	Graphics::Context->PSSetShaderResources(0, 1, blurSRV.GetAddressOf());
+	Graphics::Context->PSSetSamplers(0, 1, ppSampler.GetAddressOf());
+
+	// Bind shader data to the constant buffer
+	BlurPixelShaderExternalData blurPSData = {};
+	blurPSData.blurRadius = _blurRadius;
+	blurPSData.pixelHeight = 1.0f / Window::Height();
+	blurPSData.pixelWidth = 1.0f / Window::Width();
+	Graphics::FillAndBindNextConstantBuffer(&blurPSData, sizeof(BlurPixelShaderExternalData), D3D11_PIXEL_SHADER, 0);
+
+	Graphics::Context->Draw(3, 0);
+
+	// Pixelization results -> back buffer
+	Graphics::Context->OMSetRenderTargets(1, Graphics::BackBufferRTV.GetAddressOf(), 0);
+
+	// Activate shaders and bind resources
+	Graphics::Context->PSSetShader(pixelizationPS.Get(), 0, 0);
+	Graphics::Context->PSSetShaderResources(0, 1, pixelizationSRV.GetAddressOf());
+
+	// Bind shader data to the constant buffer
+	PixelizationPixelShaderExternalData pixelizationPSData = {};
+	pixelizationPSData.pixelSize = _pixelSize;
+	pixelizationPSData.windowSize = XMFLOAT2(Window::Width(), Window::Height());
+	Graphics::FillAndBindNextConstantBuffer(&pixelizationPSData, sizeof(PixelizationPixelShaderExternalData), D3D11_PIXEL_SHADER, 0);
+
+	Graphics::Context->Draw(3, 0);
+}
+
+
 // ------------------------------
 // Renders ImGui for Game::Draw()
 // ------------------------------
-void Game::RenderImGui()
+void Game::DrawImGui()
 {
 	ImGui::Render(); // Turns this frame’s UI into renderable triangles
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData()); // Draws it to the screen
@@ -1065,6 +1200,7 @@ void Game::FrameEnd()
 void Game::OnResize()
 {
 	UpdateAllCameraProjectionMatrices(Window::AspectRatio());
+	ResizePostProcessing();
 }
 
 

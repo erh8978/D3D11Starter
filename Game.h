@@ -37,6 +37,8 @@ private:
 	void CreateInitialLights();
 	void InitializeShadowMapping(int shadowMapResolution);
 	void ResizeShadowMap(int shadowMapResolution);
+	void InitializePostProcessing();
+	void ResizePostProcessing();
 
 	// Done in Update()
 	void UpdateLightMatrices(Light light, float lightProjectionSize);
@@ -48,7 +50,8 @@ private:
 	void FrameStart();
 	void DrawShadowMap();
 	void DrawAllGameEntities(float totalTime);
-	void RenderImGui();
+	void DrawPostProcessing();
+	void DrawImGui();
 	void FrameEnd();
 
 	// Done in OnResize()
@@ -90,5 +93,20 @@ private:
 	DirectX::XMFLOAT4X4 lightProjectionMatrix;
 	int _shadowMapResolution = 1024;
 	float _lightProjectionSize = 15.0f;
+	// Post Processing
+	// Shared between post processes
+	Microsoft::WRL::ComPtr<ID3D11SamplerState> ppSampler;
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> fullscreenVS;
+	// Tied to a particular post process
+	// Blur
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> blurPS;
+	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> blurRTV; // For rendering
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> blurSRV; // For sampling
+	int _blurRadius = 1;
+	// Pixelization
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> pixelizationPS;
+	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pixelizationRTV; // For rendering
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> pixelizationSRV; // For sampling
+	int _pixelSize = 5;
 };
 

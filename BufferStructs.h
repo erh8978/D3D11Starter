@@ -27,3 +27,16 @@ struct SkyboxVertexShaderExternalData
 	DirectX::XMFLOAT4X4 projectionMatrix;
 	DirectX::XMFLOAT4X4 viewMatrix;
 };
+
+struct BlurPixelShaderExternalData
+{
+	int blurRadius;
+	float pixelWidth;
+	float pixelHeight;
+};
+
+struct PixelizationPixelShaderExternalData
+{
+	int pixelSize;
+	DirectX::XMFLOAT2 windowSize;
+};
