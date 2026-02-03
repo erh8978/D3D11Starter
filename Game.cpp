@@ -289,7 +289,7 @@ void Game::Update(float deltaTime, float totalTime)
 // --------------------------------------------------------
 void Game::Draw(float deltaTime, float totalTime)
 {
-	// Grab the current back buffer for this frams
+	// Grab the current back buffer for this frame
 	Microsoft::WRL::ComPtr<ID3D12Resource> currentBackBuffer = Graphics::BackBuffers[Graphics::SwapChainIndex()];
 
 	// Clearing the render target
@@ -311,6 +311,14 @@ void Game::Draw(float deltaTime, float totalTime)
 		Graphics::CommandList->ClearRenderTargetView(
 			Graphics::RTVHandles[Graphics::SwapChainIndex()],
 			color,
+			0, 0); // No scissor rects
+
+		// Clear the depth buffer, too
+		Graphics::CommandList->ClearDepthStencilView(
+			Graphics::DSVHandle,
+			D3D12_CLEAR_FLAG_DEPTH,
+			1.0f,	// Max depth = 1.0f
+			0,		// Not clearing stencil, but need a value
 			0, 0); // No scissor rects
 	}
 

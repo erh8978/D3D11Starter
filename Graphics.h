@@ -56,7 +56,7 @@ namespace Graphics
 	void AdvanceSwapChainIndex();
 
 	// Resource Creation
-	inline Microsoft::WRL::ComPtr<ID3D12Resource> CreateStaticBuffer(size_t dataStride, size_t dataCount, void* data);
+	Microsoft::WRL::ComPtr<ID3D12Resource> CreateStaticBuffer(size_t dataStride, size_t dataCount, void* data);
 
 	// Debug Layer
 	void PrintDebugMessages();
