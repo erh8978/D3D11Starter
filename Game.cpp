@@ -434,8 +434,7 @@ void Game::Draw(float deltaTime, float totalTime)
 		Graphics::AdvanceSwapChainIndex();
 
 		// Wait for the GPU to be done and then reset the command list & allocator
-		Graphics::WaitForGPU();
-		Graphics::ResetAllocatorAndCommandList();
+		Graphics::ResetAllocatorAndCommandList(Graphics::SwapChainIndex());
 	}
 }
 

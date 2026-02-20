@@ -132,10 +132,14 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 	// Set up D3D12 command allocator / queue / list,
 	// which are necesary pieces for issuing standard API calls
 	{
-		// Set up allocator
-		Device->CreateCommandAllocator(
-			D3D12_COMMAND_LIST_TYPE_DIRECT,
-			IID_PPV_ARGS(CommandAllocator.GetAddressOf()));
+		// Create an allocator for each back buffer
+		for (unsigned int i = 0; i < NumBackBuffers; i++)
+		{
+			// Set up allocator
+			Device->CreateCommandAllocator(
+				D3D12_COMMAND_LIST_TYPE_DIRECT,
+				IID_PPV_ARGS(CommandAllocators[i].GetAddressOf()));
+		}
 
 		// Command queue
 		D3D12_COMMAND_QUEUE_DESC qDesc = {};
@@ -147,7 +151,7 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 		Device->CreateCommandList(
 			0, // Which physical GPU will handle these tasks? 0 for single GPU setup
 			D3D12_COMMAND_LIST_TYPE_DIRECT, // Type of command list
-			CommandAllocator.Get(),			// The allocator for this list
+			CommandAllocators[0].Get(),			// The allocator for this list
 			0,								// Initial pipeline state - none (for now)
 			IID_PPV_ARGS(CommandList.GetAddressOf()));
 	}
@@ -185,6 +189,17 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 		Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(WaitFence.GetAddressOf()));
 		WaitFenceEvent = CreateEventEx(0, 0, 0, EVENT_ALL_ACCESS);
 		WaitFenceCounter = 0;
+	}
+
+	// Create the fence for multi-frame synchronization
+	{
+		Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(FrameSyncFence.GetAddressOf()));
+		WaitFenceEvent = CreateEventEx(0, 0, 0, EVENT_ALL_ACCESS);
+		
+		for (unsigned int i = 0; i < NumBackBuffers; i++)
+		{
+			FrameSyncFenceCounters[i] = 0;
+		}
 	}
 
 	// Overall API has been initialized
@@ -586,8 +601,19 @@ D3D12_GPU_DESCRIPTOR_HANDLE Graphics::FillNextConstantBufferAndGetGPUDescriptorH
 // --------------------------------------------------------
 void Graphics::AdvanceSwapChainIndex()
 {
-	currentBackBufferIndex++;
-	currentBackBufferIndex %= NumBackBuffers;
+	CommandQueue->Signal(FrameSyncFence.Get(), FrameSyncFenceCounters[currentBackBufferIndex]);
+
+	unsigned int nextBuffer = (currentBackBufferIndex + 1) % NumBackBuffers;
+
+	if (FrameSyncFence->GetCompletedValue() < FrameSyncFenceCounters[nextBuffer])
+	{
+		FrameSyncFence->SetEventOnCompletion(FrameSyncFenceCounters[nextBuffer], FrameSyncEvent);
+		WaitForSingleObject(FrameSyncEvent, INFINITE);
+	}
+
+	FrameSyncFenceCounters[nextBuffer] = FrameSyncFenceCounters[currentBackBufferIndex] + 1;
+
+	currentBackBufferIndex = nextBuffer;
 }
 
 
@@ -597,10 +623,10 @@ void Graphics::AdvanceSwapChainIndex()
 // Always wait before resetting command allocator, as it should not
 // be reset while the GPU is processing a command list
 // --------------------------------------------------------
-void Graphics::ResetAllocatorAndCommandList()
+void Graphics::ResetAllocatorAndCommandList(unsigned int bufferIndex)
 {
-	CommandAllocator->Reset();
-	CommandList->Reset(CommandAllocator.Get(), 0);
+	CommandAllocators[bufferIndex]->Reset();
+	CommandList->Reset(CommandAllocators[bufferIndex].Get(), 0);
 }
 
 
