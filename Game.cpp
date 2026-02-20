@@ -386,6 +386,10 @@ void Game::Draw(float deltaTime, float totalTime)
 		// Set overall pipeline state
 		Graphics::CommandList->SetPipelineState(pipelineState.Get());
 
+		// CBV/SRV/UAV heap must be bound using SetDescriptorHeaps() before SetGraphicsRootSignature() is called
+		Graphics::CommandList->SetDescriptorHeaps(
+			1,
+			Graphics::CBVSRVDescriptorHeap.GetAddressOf());
 		// Root sig (must happen before root descriptor table)
 		Graphics::CommandList->SetGraphicsRootSignature(rootSignature.Get());
 
@@ -394,9 +398,6 @@ void Game::Draw(float deltaTime, float totalTime)
 			1, &Graphics::RTVHandles[Graphics::SwapChainIndex()], true, &Graphics::DSVHandle);
 		Graphics::CommandList->RSSetViewports(1, &viewport);
 		Graphics::CommandList->RSSetScissorRects(1, &scissorRect);
-		Graphics::CommandList->SetDescriptorHeaps(
-			1,
-			Graphics::CBVSRVDescriptorHeap.GetAddressOf());
 		//Graphics::CommandList->IASetVertexBuffers(0, 1, &vbView);
 		//Graphics::CommandList->IASetIndexBuffer(&ibView);
 		Graphics::CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

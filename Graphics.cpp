@@ -9,6 +9,9 @@ extern "C"
 {
 	__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001; // NVIDIA
 	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1; // AMD
+
+	__declspec(dllexport) extern const UINT D3D12SDKVersion = 618;
+	__declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\";
 }
 
 namespace Graphics
