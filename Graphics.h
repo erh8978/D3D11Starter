@@ -17,6 +17,8 @@ namespace Graphics
 	// is 256 bytes or less. Larger buffers are fine, but will
 	// result in fewer buffers in use at any time.
 	const unsigned int MaxConstantBuffers = 1000;
+	// Maximum number of texture descriptors (SRVs) we can have.
+	const unsigned int MaxTextureDescriptors = 100;
 
 	// --- GLOBAL VARS ---
 
@@ -67,6 +69,7 @@ namespace Graphics
 	void ShutDown();
 	void ResizeBuffers(unsigned int width, unsigned int height);
 	void AdvanceSwapChainIndex();
+	unsigned int LoadTexture(const wchar_t* file, bool generateMips = true);
 
 	// Resource Creation
 	Microsoft::WRL::ComPtr<ID3D12Resource> CreateStaticBuffer(size_t dataStride, size_t dataCount, void* data);
