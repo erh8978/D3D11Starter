@@ -30,6 +30,10 @@ struct VertexToPixel
 	//  |    |                |
 	//  v    v                v
 	float4 screenPosition	: SV_POSITION;	// XYZW position (System Value Position)
+    float2 UV				: TEXCOORD;
+	float3 Normal			: NORMAL;
+	float3 Tangent			: TANGENT;
+	float3 worldPos			: POSITION;
 };
 
 cbuffer ExternalData : register(b0)
@@ -37,6 +41,7 @@ cbuffer ExternalData : register(b0)
     matrix world;
     matrix view;
     matrix projection;
+    matrix worldInvTranspose;
 }
 
 // --------------------------------------------------------
@@ -63,6 +68,12 @@ VertexToPixel main( VertexShaderInput input )
 	//   which we're leaving at 1.0 for now (this is more useful when dealing with 
 	//   a perspective projection matrix, which we'll get to in the future).
     output.screenPosition = mul(wpv, float4(input.localPosition, 1.0f));
+	
+	// Pass through other data
+    output.UV = input.UV;
+    output.Normal = mul((float3x3) worldInvTranspose, input.Normal);
+    output.Tangent = mul((float3x3) world, input.Tangent);
+    output.worldPos = mul(world, float4(input.localPosition, 1)).xyz;
 
 	// Whatever we return will make its way through the pipeline to the
 	// next programmable stage we're using (the pixel shader for now)

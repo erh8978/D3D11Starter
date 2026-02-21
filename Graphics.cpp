@@ -650,7 +650,7 @@ unsigned int Graphics::LoadTexture(const wchar_t* file, bool generateMips)
 
 	// Create the SRV in the descriptor heap at the appropriate offset
 	D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = CBVSRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-	cpuHandle.ptr += (SIZE_T)srvDescriptorOffset * cbvSrvDescriptorHeapIncrementSize;
+	cpuHandle.ptr += (SIZE_T)srvIndex * cbvSrvDescriptorHeapIncrementSize;
 
 	Device->CreateShaderResourceView(texture.Get(), 0, cpuHandle);
 

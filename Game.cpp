@@ -7,6 +7,7 @@
 #include "Camera.h"
 #include "Transform.h"
 #include "Mesh.h"
+#include "Material.h"
 #include "GameEntity.h"
 #include "BufferStructs.h"
 
@@ -29,6 +30,9 @@ namespace
 
 	// Meshes
 	std::vector<std::shared_ptr<Mesh>> meshes;
+
+	// Materials
+	std::vector<std::shared_ptr<Material>> materials;
 
 	// GameEntities
 	std::vector<std::shared_ptr<GameEntity>> entities;
@@ -113,13 +117,20 @@ void Game::CreateRootSigAndPipelineState()
 
 	// Root Signature
 	{
-		// Define a table of CBV's (cosntant buffer views)
-		D3D12_DESCRIPTOR_RANGE cbvTable = {};
-		cbvTable.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-		cbvTable.NumDescriptors = 1;
-		cbvTable.BaseShaderRegister = 0;
-		cbvTable.RegisterSpace = 0;
-		cbvTable.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		// Define a table of CBV's (constant buffer views)
+		D3D12_DESCRIPTOR_RANGE cbvTableVS = {};
+		cbvTableVS.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		cbvTableVS.NumDescriptors = 1;
+		cbvTableVS.BaseShaderRegister = 0;
+		cbvTableVS.RegisterSpace = 0;
+		cbvTableVS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+		D3D12_DESCRIPTOR_RANGE cbvTablePS = {};
+		cbvTablePS.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		cbvTablePS.NumDescriptors = 1;
+		cbvTablePS.BaseShaderRegister = 0;
+		cbvTablePS.RegisterSpace = 0;
+		cbvTablePS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 		// Define the root parameters
 		D3D12_ROOT_PARAMETER rootParams[2] = {};
@@ -128,13 +139,13 @@ void Game::CreateRootSigAndPipelineState()
 		rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 		rootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 		rootParams[0].DescriptorTable.NumDescriptorRanges = 1;
-		rootParams[0].DescriptorTable.pDescriptorRanges = &cbvTable;
+		rootParams[0].DescriptorTable.pDescriptorRanges = &cbvTableVS;
 
 		// Second root param - pixel shader CB
 		rootParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 		rootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 		rootParams[1].DescriptorTable.NumDescriptorRanges = 1;
-		rootParams[1].DescriptorTable.pDescriptorRanges = &cbvTable;
+		rootParams[1].DescriptorTable.pDescriptorRanges = &cbvTablePS;
 
 		// Create a single static sampler (available to all pixel shaders)
 		D3D12_STATIC_SAMPLER_DESC anisoWrap = {};
@@ -143,6 +154,7 @@ void Game::CreateRootSigAndPipelineState()
 		anisoWrap.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 		anisoWrap.Filter = D3D12_FILTER_ANISOTROPIC;
 		anisoWrap.MaxAnisotropy = 16;
+		anisoWrap.MaxLOD = D3D12_FLOAT32_MAX;
 		anisoWrap.ShaderRegister = 0; // Will be in register(s0) in the shaders
 		anisoWrap.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 		D3D12_STATIC_SAMPLER_DESC samplers[] = { anisoWrap };
@@ -266,10 +278,20 @@ void Game::CreateGeometry()
 	meshes.push_back(std::make_shared<Mesh>("Helix", FixPath(L"../../Assets/Meshes/helix.obj").c_str()));
 	meshes.push_back(std::make_shared<Mesh>("Sphere", FixPath(L"../../Assets/Meshes/sphere.obj").c_str()));
 
-	// Create gameEntities using those meshes
-	entities.push_back(std::make_shared<GameEntity>(meshes[0]));
-	entities.push_back(std::make_shared<GameEntity>(meshes[1]));
-	entities.push_back(std::make_shared<GameEntity>(meshes[2]));
+	// Load textures and create materials
+	materials.push_back(std::make_shared<Material>(pipelineState.Get()));
+	materials[0]->LoadTextureSet(L"bronze");
+
+	materials.push_back(std::make_shared<Material>(pipelineState.Get()));
+	materials[1]->LoadTextureSet(L"cobblestone");
+
+	materials.push_back(std::make_shared<Material>(pipelineState.Get()));
+	materials[2]->LoadTextureSet(L"scratched");
+
+	// Create gameEntities using those meshes and materials
+	entities.push_back(std::make_shared<GameEntity>(meshes[0], materials[0]));
+	entities.push_back(std::make_shared<GameEntity>(meshes[1], materials[1]));
+	entities.push_back(std::make_shared<GameEntity>(meshes[2], materials[2]));
 
 	// Adjust transforms
 	entities[0]->GetTransform()->SetTranslation(-3.0f, 0.0f, 0.0f);
@@ -398,8 +420,6 @@ void Game::Draw(float deltaTime, float totalTime)
 			1, &Graphics::RTVHandles[Graphics::SwapChainIndex()], true, &Graphics::DSVHandle);
 		Graphics::CommandList->RSSetViewports(1, &viewport);
 		Graphics::CommandList->RSSetScissorRects(1, &scissorRect);
-		//Graphics::CommandList->IASetVertexBuffers(0, 1, &vbView);
-		//Graphics::CommandList->IASetIndexBuffer(&ibView);
 		Graphics::CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		
 
@@ -407,27 +427,47 @@ void Game::Draw(float deltaTime, float totalTime)
 		//Graphics::CommandList->DrawIndexedInstanced(3, 1, 0, 0, 0);
 		for (unsigned int i = 0; i < entities.size(); i++)
 		{
+			// Get data from this entity
 			std::shared_ptr<Transform> transform = entities[i]->GetTransform();
 			std::shared_ptr<Mesh> mesh = entities[i]->GetMesh();
+			std::shared_ptr<Material> material = entities[i]->GetMaterial();
 
+			// Set the PSO to the one stored in Material
+			Graphics::CommandList->SetPipelineState(material->GetPipelineStateObject().Get());
+
+			// Fill out vertex shader constant buffer
 			VertexShaderExternalData vsData{};
 			vsData.world = transform->GetWorldMatrix();
 			vsData.view = cameras[currentCameraIndex]->GetViewMatrix();
 			vsData.projection = cameras[currentCameraIndex]->GetProjectionMatrix();
+			vsData.worldInvTranspose = transform->GetWorldInvTranspose();
 
-			D3D12_GPU_DESCRIPTOR_HANDLE cbvHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(&vsData, sizeof(VertexShaderExternalData));
+			// Put the GPU handle for the VS buffer in the root signature
+			D3D12_GPU_DESCRIPTOR_HANDLE vsDataCbvHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(&vsData, sizeof(VertexShaderExternalData));
+			Graphics::CommandList->SetGraphicsRootDescriptorTable(0, vsDataCbvHandle);
 
-			Graphics::CommandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+			// Do the same for the PS constant buffer
+			PixelShaderExternalData psData{};
+			psData.albedoMapIndex = material->GetAlbedoMapIndex();
+			psData.normalMapIndex = material->GetNormalMapIndex();
+			psData.metalnessIndex = material->GetMetalnessIndex();
+			psData.roughnessIndex = material->GetRoughnessIndex();
 
+			D3D12_GPU_DESCRIPTOR_HANDLE psDataCbvHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(&psData, sizeof(PixelShaderExternalData));
+			Graphics::CommandList->SetGraphicsRootDescriptorTable(1, psDataCbvHandle); // Goes in descriptor table index 1, not 0!
+
+			// Get vertex and index buffers from the mesh
 			Microsoft::WRL::ComPtr<ID3D12Resource> vertexBuffer = mesh->GetVertexBuffer();
 			D3D12_VERTEX_BUFFER_VIEW vbView = mesh->GetVertexBufferView();
 
 			Microsoft::WRL::ComPtr<ID3D12Resource> indexBuffer = mesh->GetIndexBuffer();
 			D3D12_INDEX_BUFFER_VIEW ibView = mesh->GetIndexBufferView();
 
+			// And tell the input assembler to use them
 			Graphics::CommandList->IASetVertexBuffers(0, 1, &vbView);
 			Graphics::CommandList->IASetIndexBuffer(&ibView);
 
+			// Finally, draw!
 			Graphics::CommandList->DrawIndexedInstanced(mesh->GetIndexCount(), 1, 0, 0, 0);
 		}
 	}
