@@ -14,6 +14,8 @@ public:
 	Mesh(const char* name, const std::wstring& objFile);
 	~Mesh();
 
+	void CalculateTangents(Vertex* verts, int numVerts, unsigned int* indices, int numIndices);
+
 	// Getters for mesh data
 	Microsoft::WRL::ComPtr<ID3D12Resource> GetVertexBuffer();
 	Microsoft::WRL::ComPtr<ID3D12Resource> GetIndexBuffer();

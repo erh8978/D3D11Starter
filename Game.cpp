@@ -36,6 +36,10 @@ namespace
 
 	// GameEntities
 	std::vector<std::shared_ptr<GameEntity>> entities;
+
+	// Lights
+	std::vector<Light> lights;
+	const unsigned int MAX_LIGHTS = 10;
 }
 
 // --------------------------------------------------------
@@ -47,6 +51,7 @@ Game::Game()
 	CreateRootSigAndPipelineState();
 	CreateGeometry();
 	CreateCameras();
+	CreateLights();
 }
 
 
@@ -274,9 +279,9 @@ void Game::CreateRootSigAndPipelineState()
 void Game::CreateGeometry()
 {
 	// Load meshes from .obj files
-	meshes.push_back(std::make_shared<Mesh>("Cube", FixPath(L"../../Assets/Meshes/cube.obj").c_str()));
-	meshes.push_back(std::make_shared<Mesh>("Helix", FixPath(L"../../Assets/Meshes/helix.obj").c_str()));
 	meshes.push_back(std::make_shared<Mesh>("Sphere", FixPath(L"../../Assets/Meshes/sphere.obj").c_str()));
+	meshes.push_back(std::make_shared<Mesh>("Helix", FixPath(L"../../Assets/Meshes/helix.obj").c_str()));
+	meshes.push_back(std::make_shared<Mesh>("Cube", FixPath(L"../../Assets/Meshes/cube.obj").c_str()));
 
 	// Load textures and create materials
 	materials.push_back(std::make_shared<Material>(pipelineState.Get()));
@@ -298,6 +303,7 @@ void Game::CreateGeometry()
 	entities[2]->GetTransform()->SetTranslation(3.0f, 0.0f, 0.0f);
 }
 
+
 // --------------------------------------------------------
 // Creates initial camera objects
 // --------------------------------------------------------
@@ -305,6 +311,18 @@ void Game::CreateCameras()
 {
 	// Just one camera for now
 	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 0.0f, -10.0f), Window::AspectRatio()));
+}
+
+
+// --------------------------------------------------------
+// Creates initial lights
+// --------------------------------------------------------
+void Game::CreateLights()
+{
+	lights.push_back(Light::Directional(XMFLOAT3(0.0f, 0.0f, 1.0f), 1.0f, XMFLOAT3(1.0f, 1.0f, 1.0f))); // White directional light from camera's direction
+	lights.push_back(Light::Point(XMFLOAT3(10.0f, 0.0f, -3.0f), 0.5f, XMFLOAT3(0.7f, 0.08f, 0.56f), 20.0f)); // Magenta point light to the right and towards camera
+	lights.push_back(Light::Point(XMFLOAT3(-3.0f, -2.0f, 5.0f), 0.5f, XMFLOAT3(1.0f, 1.0f, 1.0f), 10.0f)); // White point light to the left and down, away from camera
+	lights.push_back(Light::Point(XMFLOAT3(0.0f, 0.0f, 0.0f), 0.5f, XMFLOAT3(0.05f, 0.05f, 1.0f), 5.0f)); // Blue point light that starts in the center (will move up and down)
 }
 
 
@@ -362,6 +380,9 @@ void Game::Update(float deltaTime, float totalTime)
 	{
 		entities[i]->GetTransform()->Rotate(0.0f, 1.0f * deltaTime, 0.0f);
 	}
+
+	// Move light 4 up and down
+	lights[3].Position.y = sin(totalTime / 2.0f) * 2.5f;
 }
 
 
@@ -385,8 +406,8 @@ void Game::Draw(float deltaTime, float totalTime)
 		rb.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 		Graphics::CommandList->ResourceBarrier(1, &rb);
 
-		// Background color (Cornflower Blue in this case) for clearing
-		float color[] = { 0.4f, 0.6f, 0.75f, 1.0f };
+		// Background color for clearing
+		float color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 		// Clear the RTV
 		Graphics::CommandList->ClearRenderTargetView(
@@ -431,6 +452,7 @@ void Game::Draw(float deltaTime, float totalTime)
 			std::shared_ptr<Transform> transform = entities[i]->GetTransform();
 			std::shared_ptr<Mesh> mesh = entities[i]->GetMesh();
 			std::shared_ptr<Material> material = entities[i]->GetMaterial();
+			std::shared_ptr<Camera> currentCamera = cameras[currentCameraIndex];
 
 			// Set the PSO to the one stored in Material
 			Graphics::CommandList->SetPipelineState(material->GetPipelineStateObject().Get());
@@ -438,8 +460,8 @@ void Game::Draw(float deltaTime, float totalTime)
 			// Fill out vertex shader constant buffer
 			VertexShaderExternalData vsData{};
 			vsData.world = transform->GetWorldMatrix();
-			vsData.view = cameras[currentCameraIndex]->GetViewMatrix();
-			vsData.projection = cameras[currentCameraIndex]->GetProjectionMatrix();
+			vsData.view = currentCamera->GetViewMatrix();
+			vsData.projection = currentCamera->GetProjectionMatrix();
 			vsData.worldInvTranspose = transform->GetWorldInvTranspose();
 
 			// Put the GPU handle for the VS buffer in the root signature
@@ -452,6 +474,13 @@ void Game::Draw(float deltaTime, float totalTime)
 			psData.normalMapIndex = material->GetNormalMapIndex();
 			psData.metalnessIndex = material->GetMetalnessIndex();
 			psData.roughnessIndex = material->GetRoughnessIndex();
+			psData.uvScale = material->GetUVScale();
+			psData.uvOffset = material->GetUVOffset();
+			psData.colorTint = material->GetColorTint();
+			psData.cameraPos = currentCamera->GetTranslation();
+
+			// memcpy() lights into the buffer data object
+			memcpy(&psData.lights, &lights[0], sizeof(Light) * (int)lights.size());
 
 			D3D12_GPU_DESCRIPTOR_HANDLE psDataCbvHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(&psData, sizeof(PixelShaderExternalData));
 			Graphics::CommandList->SetGraphicsRootDescriptorTable(1, psDataCbvHandle); // Goes in descriptor table index 1, not 0!
