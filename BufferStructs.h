@@ -24,3 +24,11 @@ struct PixelShaderExternalData
 	float padding;
 	DirectX::XMFLOAT3 cameraPos;
 };
+
+// Overall scene data for ray tracing
+struct RayTracingSceneData
+{
+	DirectX::XMFLOAT4X4 InverseViewProjection;
+	DirectX::XMFLOAT3 CameraPosition;
+	float pad;
+};

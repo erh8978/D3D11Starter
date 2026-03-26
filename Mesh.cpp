@@ -5,6 +5,7 @@
 
 #include "Mesh.h"
 #include "Graphics.h"
+#include "RayTracing.h"
 
 using namespace DirectX;
 
@@ -349,7 +350,8 @@ void Mesh::CalculateTangents(Vertex* verts, int numVerts, unsigned int* indices,
 Microsoft::WRL::ComPtr<ID3D12Resource> Mesh::GetVertexBuffer() { return vb; }
 Microsoft::WRL::ComPtr<ID3D12Resource> Mesh::GetIndexBuffer() { return ib; }
 D3D12_VERTEX_BUFFER_VIEW Mesh::GetVertexBufferView() { return vbView; }
-D3D12_INDEX_BUFFER_VIEW Mesh::GetIndexBufferView() { return ibView;  }
+D3D12_INDEX_BUFFER_VIEW Mesh::GetIndexBufferView() { return ibView; }
+const MeshRayTracingData& Mesh::GetRayTracingData() { return rayTracingData; }
 const char* Mesh::GetName() { return name; }
 unsigned int Mesh::GetIndexCount() { return numIndices; }
 unsigned int Mesh::GetVertexCount() { return numVertices; }
@@ -382,4 +384,7 @@ void Mesh::CreateBuffers(Vertex* vertArray, size_t numVerts, unsigned int* index
 	ibView.Format = DXGI_FORMAT_R32_UINT;
 	ibView.SizeInBytes = (UINT)(sizeof(unsigned int) * numIndices);
 	ibView.BufferLocation = ib->GetGPUVirtualAddress();
+
+	// Create the ray tracing acceleration structure for this mesh
+	rayTracingData = RayTracing::CreateBottomLevelAccelerationStructureForMesh(this);
 }
