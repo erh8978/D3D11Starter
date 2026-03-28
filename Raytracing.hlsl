@@ -11,6 +11,23 @@ struct Vertex
     float3 tangent;
 };
 
+// Overall scene data
+struct SceneData
+{
+    matrix InverseViewProjection;
+    float3 CameraPosition;
+    float pad;
+};
+
+// Per-entity data
+struct EntityData
+{
+    float4 Color;
+    uint VertexBufferDescriptorIndex;
+    uint IndexBufferDescriptorIndex;
+    float pad[2];
+};
+
 // Payload for rays (data that is "sent along" with each ray during raytrace)
 // Note: This should be as small as possible, and must match our C++ size definition
 struct RayPayload
@@ -25,31 +42,31 @@ struct RayPayload
 
 // === Constant buffers ===
 
-cbuffer SceneData : register(b0)
+cbuffer DrawData : register(b0)
 {
-	matrix InverseViewProjection;
-	float3 CameraPosition;
+    uint SceneDataConstantBufferIndex;
+    uint EntityDataDescriptorIndex;
+    uint SceneTLASDescriptorIndex;
+    uint OutputUAVDescriptorIndex;
 };
-
-
-// === Resources ===
-
-// Output UAV 
-RWTexture2D<float4> OutputColor				: register(u0);
-
-// The actual scene we want to trace through (a TLAS)
-RaytracingAccelerationStructure SceneTLAS	: register(t0);
-
-// Geometry buffers
-StructuredBuffer<uint> IndexBuffer        	: register(t1);
-StructuredBuffer<Vertex> VertexBuffer		: register(t2);
-
 
 // === Helpers ===
 
 // Barycentric interpolation of data from the triangle's vertices
 Vertex InterpolateVertices(uint triangleIndex, float2 barycentrics)
 {
+	// Get the data for this entity
+    StructuredBuffer<EntityData> ed =
+		ResourceDescriptorHeap[EntityDataDescriptorIndex];
+    EntityData thisEntity = ed[InstanceIndex()];
+	
+	// Get the geometry buffers
+    StructuredBuffer<uint> IndexBuffer =
+		ResourceDescriptorHeap[thisEntity.IndexBufferDescriptorIndex];
+	
+    StructuredBuffer<Vertex> VertexBuffer =
+		ResourceDescriptorHeap[thisEntity.VertexBufferDescriptorIndex];
+	
 	// Grab the 3 indices for this triangle
 	uint firstIndex = triangleIndex * 3;
 	uint indices[3];
@@ -111,6 +128,15 @@ RayDesc CalcRayFromCamera(float2 rayIndices, float3 camPos, float4x4 invVP)
 [shader("raygeneration")]
 void RayGen()
 {
+	// Grab the constant buffer
+    ConstantBuffer<SceneData> cb =
+		ResourceDescriptorHeap[SceneDataConstantBufferIndex];
+	
+	// And TLAS
+    RaytracingAccelerationStructure SceneTLAS =
+		ResourceDescriptorHeap[SceneTLASDescriptorIndex];
+	
+	
 	// Get the ray indices
 	uint2 rayIndices = DispatchRaysIndex().xy;
 
@@ -118,8 +144,8 @@ void RayGen()
 	// pixel of the output buffer using this shader's indices
 	RayDesc ray = CalcRayFromCamera(
 		rayIndices, 
-		CameraPosition, 
-		InverseViewProjection);
+		cb.CameraPosition, 
+		cb.InverseViewProjection);
 
 	// Set up the payload for the ray
 	// This initializes the struct to all zeros
@@ -136,8 +162,10 @@ void RayGen()
 		ray,
 		payload);
 
-	// Set the final color of the buffer
-	OutputColor[rayIndices] = float4(payload.color, 1);
+	// Set the final color of the buffer (gamma corrected)
+    RWTexture2D<float4> OutputColor =
+		ResourceDescriptorHeap[OutputUAVDescriptorIndex];
+    OutputColor[rayIndices] = float4(pow(payload.color, 1.0f / 2.2f), 1);
 }
 
 
@@ -156,11 +184,18 @@ void Miss(inout RayPayload payload)
 void ClosestHit(inout RayPayload payload, BuiltInTriangleIntersectionAttributes hitAttributes)
 {
 	// Get the interpolated vertex data
-	Vertex interpolatedVert = InterpolateVertices(
-		PrimitiveIndex(), 
-		hitAttributes.barycentrics);
+	//Vertex interpolatedVert = InterpolateVertices(
+	//	PrimitiveIndex(), 
+	//	hitAttributes.barycentrics);
 
 	// Use the resulting data to set the final color
 	// Note: Here is where we would do actual shading!
-	payload.color = interpolatedVert.normal;
+	//payload.color = interpolatedVert.normal;
+	
+	// Get the data for this entity
+    StructuredBuffer<EntityData> entityDataBuffer =
+		ResourceDescriptorHeap[EntityDataDescriptorIndex];
+    EntityData thisEntity = entityDataBuffer[InstanceIndex()];
+	
+    payload.color = thisEntity.Color.rgb;
 }

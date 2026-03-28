@@ -37,6 +37,7 @@ namespace
 
 	// GameEntities
 	std::vector<std::shared_ptr<GameEntity>> entities;
+	const int NUM_ENTITIES = 10;
 
 	// Lights
 	std::vector<Light> lights;
@@ -81,30 +82,37 @@ void Game::CreateGeometry()
 {
 	// Load meshes from .obj files
 	meshes.push_back(std::make_shared<Mesh>("Sphere", FixPath(L"../../Assets/Meshes/sphere.obj").c_str()));
-	//meshes.push_back(std::make_shared<Mesh>("Helix", FixPath(L"../../Assets/Meshes/helix.obj").c_str()));
-	//meshes.push_back(std::make_shared<Mesh>("Cube", FixPath(L"../../Assets/Meshes/cube.obj").c_str()));
+	meshes.push_back(std::make_shared<Mesh>("Cube", FixPath(L"../../Assets/Meshes/cube.obj").c_str()));
 
-	// Load textures and create materials
+	// Create materials, and gameEntities using those meshes and materials
+	for (unsigned int i = 0; i < NUM_ENTITIES; i++)
+	{
+		// Make a material based on number of entities
+		materials.push_back(std::make_shared<Material>(pipelineState.Get(), XMFLOAT3((float)(i / NUM_ENTITIES), (float)((NUM_ENTITIES - i) / NUM_ENTITIES), (float)sin(i) / 2.0f + 0.5f)));
+
+		// Make a sphere gameEntity from that material
+		entities.push_back(std::make_shared<GameEntity>(meshes[0], materials[i]));
+
+		float entitySpace = 1.0f;
+		float totalEntitySpace = NUM_ENTITIES * entitySpace;
+		float subtractFromXandZ = totalEntitySpace / 2.0f;
+		float addToXandZ = entitySpace * i;
+
+		entities[i]->GetTransform()->SetTranslation(XMFLOAT3(-NUM_ENTITIES / 2.0f + i, 0.0f, -NUM_ENTITIES / 2.0f + i));
+	}
+
+	// Make a floor under all spheres
 	materials.push_back(std::make_shared<Material>(pipelineState.Get()));
-	materials[0]->LoadTextureSet(L"bronze");
+	materials[materials.size() - 1]->SetColorTint(XMFLOAT3(0.4f, 0.4f, 0.4f));
+	entities.push_back(std::make_shared<GameEntity>(meshes[1], materials[materials.size() - 1]));
+	entities[entities.size() - 1]->GetTransform()->SetScale(NUM_ENTITIES * 2.0f, 1.0f, NUM_ENTITIES * 2.0f);
+	entities[entities.size() - 1]->GetTransform()->SetTranslation(XMFLOAT3(0.0f, -2.0f, 0.0f));
 
-	//materials.push_back(std::make_shared<Material>(pipelineState.Get()));
-	//materials[1]->LoadTextureSet(L"cobblestone");
-
-	//materials.push_back(std::make_shared<Material>(pipelineState.Get()));
-	//materials[2]->LoadTextureSet(L"scratched");
-
-	// Create gameEntities using those meshes and materials
-	entities.push_back(std::make_shared<GameEntity>(meshes[0], materials[0]));
-	//entities.push_back(std::make_shared<GameEntity>(meshes[1], materials[1]));
-	//entities.push_back(std::make_shared<GameEntity>(meshes[2], materials[2]));
-
-	// Adjust transforms
-	//entities[0]->GetTransform()->SetTranslation(-3.0f, 0.0f, 0.0f);
-	//entities[2]->GetTransform()->SetTranslation(3.0f, 0.0f, 0.0f);
+	// Create entity data buffer once all entities are created
+	RayTracing::CreateEntityDataBuffer(entities);
 
 	// Once we have all of the BLASes ready, we can make a TLAS
-	RayTracing::CreateTopLevelAccelerationStructureForScene(entities[0]);
+	RayTracing::CreateTopLevelAccelerationStructureForScene(entities);
 
 	// Finalize any initialization and wait for the GPU before proceeding to the game loop
 	Graphics::CloseAndExecuteCommandList();
@@ -119,7 +127,8 @@ void Game::CreateGeometry()
 void Game::CreateCameras()
 {
 	// Just one camera for now
-	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, 0.0f, -10.0f), Window::AspectRatio()));
+	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, NUM_ENTITIES + 5.0f, -NUM_ENTITIES - 5.0f), Window::AspectRatio()));
+	cameras[0]->SetPitchYawRoll(XMFLOAT3(XMConvertToRadians(45.0f), 0.0f, 0.0f));
 }
 
 
@@ -164,9 +173,19 @@ void Game::Update(float deltaTime, float totalTime)
 	// Update camera's position, angle, etc.
 	cameras[currentCameraIndex]->Update(deltaTime);
 
-	for (unsigned int i = 0; i < entities.size(); i++)
+	for (unsigned int i = 0; i < entities.size() - 1; i++)
 	{
-		entities[i]->GetTransform()->Rotate(0.0f, 1.0f * deltaTime, 0.0f);
+		XMFLOAT3 currentTranslation = entities[i]->GetTransform()->GetTranslation();
+
+		switch (i % 2)
+		{
+		case 0:
+			entities[i]->GetTransform()->SetTranslation(currentTranslation.x, currentTranslation.y, (float)sin(totalTime + cos(i)) * entities.size());
+			break;
+		case 1:
+			entities[i]->GetTransform()->SetTranslation((float)sin(totalTime + cos(i)) * entities.size(), currentTranslation.y, currentTranslation.z);
+			break;
+		}
 	}
 
 	// Move light 4 up and down
@@ -184,7 +203,7 @@ void Game::Draw(float deltaTime, float totalTime)
 
 	// Ray tracing - Recreate the TLAS and then trace it
 	{
-		RayTracing::CreateTopLevelAccelerationStructureForScene(entities[0]);
+		RayTracing::CreateTopLevelAccelerationStructureForScene(entities);
 		RayTracing::Raytrace(cameras[0], currentBackBuffer);
 	}
 
