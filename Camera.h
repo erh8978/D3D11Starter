@@ -15,7 +15,7 @@ public:
 		float initialMovementSpeed = 5.0f,
 		float initialMouseLookSpeed = 0.005f,
 		float farClipPlane = 1000.0f,
-		float nearClipPlane = 0.0001f);
+		float nearClipPlane = 0.1f);
 	~Camera();
 
 	DirectX::XMFLOAT4X4 GetViewMatrix();
