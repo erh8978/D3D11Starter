@@ -37,7 +37,7 @@ namespace
 
 	// GameEntities
 	std::vector<std::shared_ptr<GameEntity>> entities;
-	const int NUM_ENTITIES = 10;
+	const int NUM_MOVING_ENTITIES = 10;
 
 	// Lights
 	std::vector<Light> lights;
@@ -85,27 +85,33 @@ void Game::CreateGeometry()
 	meshes.push_back(std::make_shared<Mesh>("Cube", FixPath(L"../../Assets/Meshes/cube.obj").c_str()));
 
 	// Create materials, and gameEntities using those meshes and materials
-	for (unsigned int i = 0; i < NUM_ENTITIES; i++)
+	for (unsigned int i = 0; i < NUM_MOVING_ENTITIES; i++)
 	{
 		// Make a material based on number of entities
-		materials.push_back(std::make_shared<Material>(pipelineState.Get(), XMFLOAT3((float)(i / NUM_ENTITIES), (float)((NUM_ENTITIES - i) / NUM_ENTITIES), (float)sin(i) / 2.0f + 0.5f)));
+		materials.push_back(std::make_shared<Material>(
+			pipelineState.Get(), // PSO
+			XMFLOAT4(			 // Color
+				(float)(i / NUM_MOVING_ENTITIES),							// R
+				(float)((NUM_MOVING_ENTITIES - i) / NUM_MOVING_ENTITIES),	// G
+				(float)sin(i) / 2.0f + 0.5f,								// B
+				(float) (i + 1) / NUM_MOVING_ENTITIES)));					// A (used for roughness)
 
 		// Make a sphere gameEntity from that material
 		entities.push_back(std::make_shared<GameEntity>(meshes[0], materials[i]));
 
 		float entitySpace = 1.0f;
-		float totalEntitySpace = NUM_ENTITIES * entitySpace;
+		float totalEntitySpace = NUM_MOVING_ENTITIES * entitySpace;
 		float subtractFromXandZ = totalEntitySpace / 2.0f;
 		float addToXandZ = entitySpace * i;
 
-		entities[i]->GetTransform()->SetTranslation(XMFLOAT3(-NUM_ENTITIES / 2.0f + i, 0.0f, -NUM_ENTITIES / 2.0f + i));
+		entities[i]->GetTransform()->SetTranslation(XMFLOAT3(-NUM_MOVING_ENTITIES / 2.0f + i, 0.0f, -NUM_MOVING_ENTITIES / 2.0f + i));
 	}
 
 	// Make a floor under all spheres
 	materials.push_back(std::make_shared<Material>(pipelineState.Get()));
-	materials[materials.size() - 1]->SetColorTint(XMFLOAT3(0.4f, 0.4f, 0.4f));
+	materials[materials.size() - 1]->SetColorTint(XMFLOAT4(0.4f, 0.4f, 0.4f, 1.0f));
 	entities.push_back(std::make_shared<GameEntity>(meshes[1], materials[materials.size() - 1]));
-	entities[entities.size() - 1]->GetTransform()->SetScale(NUM_ENTITIES * 2.0f, 1.0f, NUM_ENTITIES * 2.0f);
+	entities[entities.size() - 1]->GetTransform()->SetScale(NUM_MOVING_ENTITIES * 2.0f, 1.0f, NUM_MOVING_ENTITIES * 2.0f);
 	entities[entities.size() - 1]->GetTransform()->SetTranslation(XMFLOAT3(0.0f, -2.0f, 0.0f));
 
 	// Create entity data buffer once all entities are created
@@ -127,7 +133,7 @@ void Game::CreateGeometry()
 void Game::CreateCameras()
 {
 	// Just one camera for now
-	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, NUM_ENTITIES + 5.0f, -NUM_ENTITIES - 5.0f), Window::AspectRatio()));
+	cameras.push_back(std::make_shared<Camera>(XMFLOAT3(0.0f, NUM_MOVING_ENTITIES + 5.0f, -NUM_MOVING_ENTITIES - 5.0f), Window::AspectRatio()));
 	cameras[0]->SetPitchYawRoll(XMFLOAT3(XMConvertToRadians(45.0f), 0.0f, 0.0f));
 }
 
@@ -220,6 +226,7 @@ void Game::Draw(float deltaTime, float totalTime)
 		Graphics::AdvanceSwapChainIndex();
 
 		// Wait for the GPU to be done and then reset the command list & allocator
+		Graphics::WaitForGPU();
 		Graphics::ResetAllocatorAndCommandList(Graphics::SwapChainIndex());
 	}
 }

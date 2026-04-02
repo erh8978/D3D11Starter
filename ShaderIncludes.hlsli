@@ -110,4 +110,49 @@ float3 DiffuseEnergyConserve(float3 diffuse, float3 F, float metalness)
     return diffuse * (1 - F) * (1 - metalness);
 }
 
+// Generates a "random" float from UV coords
+// https://thebookofshaders.com/10/
+float rand(float2 uv)
+{
+    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5433);
+}
+
+// Generate a "random" 2-component vector
+float2 rand2(float2 uv)
+{
+    // There WILL be a pattern, but it's not noticable enough for the purposes of this project
+    return float2(rand(uv), rand(uv.yx));
+}
+
+// Generate a random vector3 on a sphere
+// Takes two uniformly-distributed random floats as input
+// Raytracing Gems - Ch.16
+float3 RandomVector(float u0, float u1)
+{
+    float a = u0 * 2 - 1;
+    float b = sqrt(1 - a * a);
+    float phi = 2.0f * PI * u1;
+    
+    float x = b * cos(phi);
+    float y = b * sin(phi);
+    float z = a;
+    
+    return float3(x, y, z);
+}
+
+// Generate a random vector3 on a hemisphere
+// Like RandomVector, takes two random floats, but also takes a unit normal in the direction of the hemisphere
+// Raytracing Gems - Ch.16
+float3 RandomCosineWeightedHemisphere(float u0, float u1, float3 unitNormal)
+{
+    float a = u0 * 2 - 1;
+    float b = sqrt(1 - a * a);
+    float phi = 2.0f * PI * u1;
+    
+    float x = unitNormal.x + b * cos(phi);
+    float y = unitNormal.y + b * sin(phi);
+    float z = unitNormal.z + a;
+    return float3(x, y, z);
+}
+
 #endif

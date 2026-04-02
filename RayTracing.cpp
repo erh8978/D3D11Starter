@@ -221,7 +221,7 @@ void RayTracing::CreateRaytracingPipelineState(std::wstring raytracingShaderLibr
 
 	// === Shader config (payload) ===
 	D3D12_RAYTRACING_SHADER_CONFIG shaderConfigDesc = {};
-	shaderConfigDesc.MaxPayloadSizeInBytes = sizeof(DirectX::XMFLOAT3);	// Assuming a float3 color for now
+	shaderConfigDesc.MaxPayloadSizeInBytes = sizeof(DirectX::XMFLOAT3) + sizeof(unsigned int) * 2;	// float3 Color, uint RecursionDepth, uint RaysPerPixelIndex
 	shaderConfigDesc.MaxAttributeSizeInBytes = sizeof(DirectX::XMFLOAT2); // Assuming a float2 for barycentric coords for now
 
 	D3D12_STATE_SUBOBJECT shaderConfigSubObj = {};
@@ -792,8 +792,8 @@ void RayTracing::CreateEntityDataBuffer(std::vector<std::shared_ptr<GameEntity>>
 	{
 		// Set up this entity's data
 		RayTracingEntityData data{};
-		DirectX::XMFLOAT3 c = scene[i]->GetMaterial()->GetColorTint();
-		data.Color = DirectX::XMFLOAT4(c.x, c.y, c.z, 1);
+		DirectX::XMFLOAT4 c = scene[i]->GetMaterial()->GetColorTint();
+		data.Color = DirectX::XMFLOAT4(c.x, c.y, c.z, c.w);
 		data.IndexBufferDescriptorIndex = Graphics::GetDescriptorIndex(scene[i]->GetMesh()->GetRayTracingData().IndexBufferSRV);
 		data.VertexBufferDescriptorIndex = Graphics::GetDescriptorIndex(scene[i]->GetMesh()->GetRayTracingData().VertexBufferSRV);
 

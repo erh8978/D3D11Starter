@@ -1,4 +1,4 @@
-
+#include "ShaderIncludes.hlsli"
 
 // === Structs ===
 
@@ -32,7 +32,9 @@ struct EntityData
 // Note: This should be as small as possible, and must match our C++ size definition
 struct RayPayload
 {
-	float3 color;
+	float3 Color;
+    uint RecursionDepth;
+    uint RayPerPixelIndex;
 };
 
 // Note: We'll be using the built-in BuiltInTriangleIntersectionAttributes struct
@@ -147,25 +149,42 @@ void RayGen()
 		cb.CameraPosition, 
 		cb.InverseViewProjection);
 
-	// Set up the payload for the ray
-	// This initializes the struct to all zeros
-	RayPayload payload = (RayPayload)0;
-
-	// Perform the ray trace for this ray
-	TraceRay(
-		SceneTLAS,
-		RAY_FLAG_NONE,
-		0xFF,
-		0,
-		0,
-		0,
-		ray,
-		payload);
+    float3 totalColor = float3(0, 0, 0);
+	
+    int raysPerPixel = 25; // TODO: Move this to cbuffer so it can be changed in C++ / at runtime
+    for (int r = 0; r < raysPerPixel; r++)
+    {
+		// Set up the payload for the ray
+		// This initializes the struct to all zeros
+        RayPayload payload = (RayPayload) 0;
+        payload.Color = float3(1, 1, 1);
+        payload.RayPerPixelIndex = r;
+		
+        float2 adjustedIndices = (float2) rayIndices;
+        float ray01 = (float) r / raysPerPixel;
+        adjustedIndices += rand2(rayIndices.xy * ray01);
+		
+		// Perform the ray trace for this ray
+        TraceRay(
+			SceneTLAS,
+			RAY_FLAG_NONE,
+			0xFF,
+			0,
+			0,
+			0,
+			ray,
+			payload);
+		
+		// Add result of this ray (payload color) to total color
+        totalColor += payload.Color;
+    }
+	
+    float3 avg = totalColor / raysPerPixel;
 
 	// Set the final color of the buffer (gamma corrected)
     RWTexture2D<float4> OutputColor =
 		ResourceDescriptorHeap[OutputUAVDescriptorIndex];
-    OutputColor[rayIndices] = float4(pow(payload.color, 1.0f / 2.2f), 1);
+    OutputColor[rayIndices] = float4(pow(avg, 1.0f / 2.2f), 1);
 }
 
 
@@ -175,7 +194,7 @@ void Miss(inout RayPayload payload)
 {
 	// Nothing was hit, so return black for now.
 	// Ideally this is where we would do skybox stuff!
-    payload.color = float3(0.4f, 0.6f, 0.75f);
+    payload.Color *= float3(0.4f, 0.6f, 0.75f);
 }
 
 
@@ -183,19 +202,57 @@ void Miss(inout RayPayload payload)
 [shader("closesthit")]
 void ClosestHit(inout RayPayload payload, BuiltInTriangleIntersectionAttributes hitAttributes)
 {
-	// Get the interpolated vertex data
-	//Vertex interpolatedVert = InterpolateVertices(
-	//	PrimitiveIndex(), 
-	//	hitAttributes.barycentrics);
+	// If we've reached max recursion, we haven't hit a light source
+	// TODO: Add MaxRecursionDepth to cbuffer
+    if (payload.RecursionDepth == 10)
+    {
+        payload.Color = float3(0, 0, 0);
+        return;
+    }
+	
+	// Grab the TLAS
+    RaytracingAccelerationStructure SceneTLAS =
+		ResourceDescriptorHeap[SceneTLASDescriptorIndex];
 
-	// Use the resulting data to set the final color
-	// Note: Here is where we would do actual shading!
-	//payload.color = interpolatedVert.normal;
+	// Get the interpolated vertex data
+	Vertex interpolatedVert = InterpolateVertices(
+		PrimitiveIndex(), 
+		hitAttributes.barycentrics);
+    float3 normal_WS = normalize(mul(interpolatedVert.normal, (float3x3)ObjectToWorld4x3()));
 	
 	// Get the data for this entity
     StructuredBuffer<EntityData> entityDataBuffer =
 		ResourceDescriptorHeap[EntityDataDescriptorIndex];
     EntityData thisEntity = entityDataBuffer[InstanceIndex()];
 	
-    payload.color = thisEntity.Color.rgb;
+	// We've hit, so adjust payload by this surface's color
+    payload.Color *= thisEntity.Color.rgb;
+	
+	// Create a vector for a random bounce
+    float2 pixelUV = (float2) DispatchRaysIndex().xy / DispatchRaysDimensions().xy;
+    float2 rng = rand2(
+		pixelUV * (payload.RecursionDepth + 1) +
+		payload.RayPerPixelIndex +
+		RayTCurrent());
+	
+	// Interpolate between perfect reflection and random bounce based on roughness - using color tint's alpha channel as roughness
+    float3 refl = reflect(WorldRayDirection(), normal_WS);
+    float3 randomBounce = RandomCosineWeightedHemisphere(rand(rng), rand(rng.yx), normal_WS);
+    float3 dir = normalize(lerp(refl, randomBounce, thisEntity.Color.a));
+	
+	// Build a new ray reflecting off this surface
+    RayDesc ray;
+    ray.Origin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    ray.Direction = dir;
+    ray.TMin = 0.0001f;
+    ray.TMax = 1000.0f;
+
+	// Recursively ray trace
+    payload.RecursionDepth++;
+    TraceRay(
+		SceneTLAS,
+		RAY_FLAG_NONE,
+		0xFF, 0, 0, 0, // Mask and offsets
+		ray,
+		payload);
 }
