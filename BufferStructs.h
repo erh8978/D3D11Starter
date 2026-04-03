@@ -14,7 +14,7 @@ struct VertexShaderExternalData
 struct PixelShaderExternalData
 {
 	Light lights[10];
-	unsigned int albedoMapIndex;
+	unsigned int albedoTexIndex;
 	unsigned int normalMapIndex;
 	unsigned int metalnessIndex;
 	unsigned int roughnessIndex;
@@ -51,5 +51,12 @@ struct RayTracingEntityData
 	DirectX::XMFLOAT4 Color;
 	unsigned int VertexBufferDescriptorIndex;
 	unsigned int IndexBufferDescriptorIndex;
-	float pad[2];
+	
+	unsigned int AlbedoTexIndex;
+	unsigned int NormalMapIndex;
+	unsigned int RoughnessIndex;
+	unsigned int MetalnessIndex;
+
+	float Roughness;
+	float Metalness;
 };

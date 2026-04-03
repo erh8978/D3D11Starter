@@ -23,6 +23,11 @@
 // For the DirectX Math library
 using namespace DirectX;
 
+// Simplify RNG
+float RandomFloat() { return std::rand() / (RAND_MAX + 1.0f); }
+float RandomFloat(float min, float max) { return RandomFloat() * (max - min) + min; }
+int RandomInt(int min, int max) { return (int)(RandomFloat() * (max - min) + min); }
+
 namespace
 {
 	// Cameras
@@ -37,11 +42,22 @@ namespace
 
 	// GameEntities
 	std::vector<std::shared_ptr<GameEntity>> entities;
-	const int NUM_MOVING_ENTITIES = 10;
+	const int NUM_MOVING_ENTITIES = 20;
 
 	// Lights
 	std::vector<Light> lights;
 	const unsigned int MAX_LIGHTS = 10;
+
+	// Texture names
+	std::vector<std::wstring> textureNames = {
+		L"bronze",
+		L"cobblestone",
+		L"floor",
+		L"paint",
+		L"rough",
+		L"scratched",
+		L"titanium",
+		L"wood" };
 }
 
 // --------------------------------------------------------
@@ -89,22 +105,30 @@ void Game::CreateGeometry()
 	{
 		// Make a material based on number of entities
 		materials.push_back(std::make_shared<Material>(
-			pipelineState.Get(), // PSO
-			XMFLOAT4(			 // Color
-				(float)(i / NUM_MOVING_ENTITIES),							// R
-				(float)((NUM_MOVING_ENTITIES - i) / NUM_MOVING_ENTITIES),	// G
-				(float)sin(i) / 2.0f + 0.5f,								// B
-				(float) (i + 1) / NUM_MOVING_ENTITIES)));					// A (used for roughness)
+			pipelineState.Get(),// PSO
+			XMFLOAT4(			// Color
+				RandomFloat(),	// R
+				RandomFloat(),	// G
+				RandomFloat(),	// B
+				1.0f)));		// A
+		materials[i]->SetRoughness(RandomFloat());
+		materials[i]->SetMetalness(RandomFloat());
+
+		// Load PBR textures
+		materials[i]->LoadTextureSet(textureNames[RandomInt(0, textureNames.size())]);
 
 		// Make a sphere gameEntity from that material
 		entities.push_back(std::make_shared<GameEntity>(meshes[0], materials[i]));
 
-		float entitySpace = 1.0f;
-		float totalEntitySpace = NUM_MOVING_ENTITIES * entitySpace;
-		float subtractFromXandZ = totalEntitySpace / 2.0f;
-		float addToXandZ = entitySpace * i;
+		// Give each entity a random size
+		const float MAX_SCALE = 3.0f;
+		const float MIN_SCALE = 0.5f;
 
-		entities[i]->GetTransform()->SetTranslation(XMFLOAT3(-NUM_MOVING_ENTITIES / 2.0f + i, 0.0f, -NUM_MOVING_ENTITIES / 2.0f + i));
+		float scale = RandomFloat(MIN_SCALE, MAX_SCALE);
+		entities[i]->GetTransform()->SetScale(scale, scale, scale);
+
+		// Put the entities in different spots
+		entities[i]->GetTransform()->SetTranslation(XMFLOAT3(-NUM_MOVING_ENTITIES / 2.0f + i, scale, -NUM_MOVING_ENTITIES / 2.0f + i));
 	}
 
 	// Make a floor under all spheres
@@ -112,7 +136,7 @@ void Game::CreateGeometry()
 	materials[materials.size() - 1]->SetColorTint(XMFLOAT4(0.4f, 0.4f, 0.4f, 1.0f));
 	entities.push_back(std::make_shared<GameEntity>(meshes[1], materials[materials.size() - 1]));
 	entities[entities.size() - 1]->GetTransform()->SetScale(NUM_MOVING_ENTITIES * 2.0f, 1.0f, NUM_MOVING_ENTITIES * 2.0f);
-	entities[entities.size() - 1]->GetTransform()->SetTranslation(XMFLOAT3(0.0f, -2.0f, 0.0f));
+	entities[entities.size() - 1]->GetTransform()->SetTranslation(XMFLOAT3(0.0f, -1.0f, 0.0f));
 
 	// Create entity data buffer once all entities are created
 	RayTracing::CreateEntityDataBuffer(entities);

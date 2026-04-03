@@ -104,14 +104,25 @@ void RayTracing::CreateRaytracingRootSignatures()
 			rootParams[0].Constants.ShaderRegister = 0;
 		}
 
+		// Setup a static sampler
+		D3D12_STATIC_SAMPLER_DESC anisoWrap = {};
+		anisoWrap.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.Filter = D3D12_FILTER_ANISOTROPIC;
+		anisoWrap.MaxAnisotropy = 16;
+		anisoWrap.MaxLOD = D3D12_FLOAT32_MAX;
+		anisoWrap.ShaderRegister = 0;
+		anisoWrap.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
 		// Create the global root signature
 		Microsoft::WRL::ComPtr<ID3DBlob> blob;
 		Microsoft::WRL::ComPtr<ID3DBlob> errors;
 		D3D12_ROOT_SIGNATURE_DESC globalRootSigDesc = {};
 		globalRootSigDesc.NumParameters = ARRAYSIZE(rootParams);
 		globalRootSigDesc.pParameters = rootParams;
-		globalRootSigDesc.NumStaticSamplers = 0;
-		globalRootSigDesc.pStaticSamplers = 0;
+		globalRootSigDesc.NumStaticSamplers = 1;
+		globalRootSigDesc.pStaticSamplers = &anisoWrap;
 		globalRootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
 
 		D3D12SerializeRootSignature(&globalRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, blob.GetAddressOf(), errors.GetAddressOf());
@@ -792,10 +803,19 @@ void RayTracing::CreateEntityDataBuffer(std::vector<std::shared_ptr<GameEntity>>
 	{
 		// Set up this entity's data
 		RayTracingEntityData data{};
-		DirectX::XMFLOAT4 c = scene[i]->GetMaterial()->GetColorTint();
+		std::shared_ptr<Material> mat = scene[i]->GetMaterial();
+		DirectX::XMFLOAT4 c = mat->GetColorTint();
 		data.Color = DirectX::XMFLOAT4(c.x, c.y, c.z, c.w);
 		data.IndexBufferDescriptorIndex = Graphics::GetDescriptorIndex(scene[i]->GetMesh()->GetRayTracingData().IndexBufferSRV);
 		data.VertexBufferDescriptorIndex = Graphics::GetDescriptorIndex(scene[i]->GetMesh()->GetRayTracingData().VertexBufferSRV);
+
+		data.AlbedoTexIndex = mat->GetAlbedoTexIndex();
+		data.NormalMapIndex = mat->GetNormalMapIndex();
+		data.RoughnessIndex = mat->GetRoughnessIndex();
+		data.MetalnessIndex = mat->GetMetalnessIndex();
+
+		data.Roughness = mat->GetRoughness();
+		data.Metalness = mat->GetMetalness();
 
 		entityData.push_back(data);
 	}

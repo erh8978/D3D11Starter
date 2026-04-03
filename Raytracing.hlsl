@@ -25,7 +25,15 @@ struct EntityData
     float4 Color;
     uint VertexBufferDescriptorIndex;
     uint IndexBufferDescriptorIndex;
-    float pad[2];
+    
+    uint AlbedoTexIndex;
+    uint NormalMapIndex;
+    uint RoughnessIndex;
+    uint MetalnessIndex;
+	
+	// Used if entity doesn't have roughness/metalness map
+    float Roughness;
+    float Metalness;
 };
 
 // Payload for rays (data that is "sent along" with each ray during raytrace)
@@ -51,6 +59,9 @@ cbuffer DrawData : register(b0)
     uint SceneTLASDescriptorIndex;
     uint OutputUAVDescriptorIndex;
 };
+
+// === Samplers ===
+SamplerState AnisoWrapSampler : register(s0);
 
 // === Helpers ===
 
@@ -219,14 +230,39 @@ void ClosestHit(inout RayPayload payload, BuiltInTriangleIntersectionAttributes 
 		PrimitiveIndex(), 
 		hitAttributes.barycentrics);
     float3 normal_WS = normalize(mul(interpolatedVert.normal, (float3x3)ObjectToWorld4x3()));
+    float3 tangent_WS = normalize(mul(interpolatedVert.tangent, (float3x3)ObjectToWorld4x3()));
+    float3 finalNormal = normal_WS; // Will be overwritten later, if textures are loaded
 	
 	// Get the data for this entity
     StructuredBuffer<EntityData> entityDataBuffer =
 		ResourceDescriptorHeap[EntityDataDescriptorIndex];
     EntityData thisEntity = entityDataBuffer[InstanceIndex()];
 	
+    float3 surfaceColor;
+	
 	// We've hit, so adjust payload by this surface's color
-    payload.Color *= thisEntity.Color.rgb;
+	if (thisEntity.AlbedoTexIndex != -1)
+    {
+		// Grab textures from the resource heap
+        Texture2D albedoTex = ResourceDescriptorHeap[thisEntity.AlbedoTexIndex];
+        Texture2D normalMap = ResourceDescriptorHeap[thisEntity.NormalMapIndex];
+        Texture2D roughness = ResourceDescriptorHeap[thisEntity.RoughnessIndex];
+        Texture2D metalness = ResourceDescriptorHeap[thisEntity.MetalnessIndex];
+		
+		// Get normal vector using normal map and save it to finalNormal
+        float3 bitangent = normalize(cross(tangent_WS, normal_WS));
+        float3x3 TBN = float3x3(tangent_WS, bitangent, normal_WS);
+        finalNormal = normalize(mul(normalize(normalMap.SampleLevel(AnisoWrapSampler, interpolatedVert.uv, 0) * 2 - 1).xyz, TBN));
+		
+		// Set roughness and metalness values for later calculations
+        thisEntity.Roughness = pow(roughness.SampleLevel(AnisoWrapSampler, interpolatedVert.uv, 0).r, 2);
+        thisEntity.Metalness = metalness.SampleLevel(AnisoWrapSampler, interpolatedVert.uv, 0).r;
+        surfaceColor = pow(albedoTex.SampleLevel(AnisoWrapSampler, interpolatedVert.uv, 0).rgb, 2.2);
+    }
+    else
+    {
+        surfaceColor = thisEntity.Color.rgb;
+    }
 	
 	// Create a vector for a random bounce
     float2 pixelUV = (float2) DispatchRaysIndex().xy / DispatchRaysDimensions().xy;
@@ -235,10 +271,12 @@ void ClosestHit(inout RayPayload payload, BuiltInTriangleIntersectionAttributes 
 		payload.RayPerPixelIndex +
 		RayTCurrent());
 	
-	// Interpolate between perfect reflection and random bounce based on roughness - using color tint's alpha channel as roughness
-    float3 refl = reflect(WorldRayDirection(), normal_WS);
-    float3 randomBounce = RandomCosineWeightedHemisphere(rand(rng), rand(rng.yx), normal_WS);
-    float3 dir = normalize(lerp(refl, randomBounce, thisEntity.Color.a));
+	// Interpolate between perfect reflection and random bounce based on roughness
+    float3 refl = reflect(WorldRayDirection(), finalNormal);
+    float3 randomBounce = RandomCosineWeightedHemisphere(rand(rng), rand(rng.yx), finalNormal);
+    float3 dir = normalize(lerp(refl, randomBounce, thisEntity.Roughness));
+	
+    payload.Color *= surfaceColor;
 	
 	// Build a new ray reflecting off this surface
     RayDesc ray;
