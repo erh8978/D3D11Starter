@@ -24,6 +24,7 @@ private:
 	void CreateGeometry();
 	void CreateCameras();
 	void CreateLights();
+	void CreateSkybox();
 
 	// Note the usage of ComPtr below
 	//  - This is a smart pointer for objects that abide by the

@@ -10,6 +10,7 @@
 #include "Material.h"
 #include "GameEntity.h"
 #include "BufferStructs.h"
+#include "Sky.h"
 
 #include <DirectXMath.h>
 #include <vector>
@@ -40,6 +41,9 @@ namespace
 	// Lights
 	std::vector<Light> lights;
 	const unsigned int MAX_LIGHTS = 10;
+
+	// Skybox
+	std::shared_ptr<Sky> skybox;
 }
 
 // --------------------------------------------------------
@@ -52,6 +56,7 @@ Game::Game()
 	CreateGeometry();
 	CreateCameras();
 	CreateLights();
+	CreateSkybox();
 }
 
 
@@ -327,6 +332,206 @@ void Game::CreateLights()
 
 
 // --------------------------------------------------------
+// Creates skybox & related PSO/root sig
+// --------------------------------------------------------
+void Game::CreateSkybox()
+{
+	// All skyboxes will use the same PSO settings & root signature parameters,
+	// So instead of having a method in Sky to do this work, we do it in Game so we can pass the same PSO to any skybox we make
+
+	// Blobs to hold raw shader byte code used in several steps below
+	Microsoft::WRL::ComPtr<ID3DBlob> skyboxVertexShaderByteCode;
+	Microsoft::WRL::ComPtr<ID3DBlob> skyboxPixelShaderByteCode;
+
+	// Load shaders
+	{
+		// Read our compiled vertex shader code into a blob
+		// - Essentially just "open the file and plop its contents here"
+		D3DReadFileToBlob(FixPath(L"SkyboxVS.cso").c_str(), skyboxVertexShaderByteCode.GetAddressOf());
+		D3DReadFileToBlob(FixPath(L"SkyboxPS.cso").c_str(), skyboxPixelShaderByteCode.GetAddressOf());
+	}
+
+	// Input layout
+	const unsigned int inputElementCount = 4;
+	D3D12_INPUT_ELEMENT_DESC inputElements[inputElementCount] = {};
+	{
+		// Create an input layout that describes the vertex format
+		// used by the vertex shader we're using
+		//  - This is used by the pipeline to know how to interpret the raw data
+		//    sitting inside a vertex buffer
+
+		// Set up the first element - a position, which is 3 float values
+		inputElements[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+		inputElements[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;	// R32 G32 B32 = float3
+		inputElements[0].SemanticName = "POSITION";				// Name must match semantic
+		inputElements[0].SemanticIndex = 0;						// First POSITION semantic
+
+		// Set up the second element - UV, which is 2 more float values
+		inputElements[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+		inputElements[1].Format = DXGI_FORMAT_R32G32_FLOAT;		// R32 G32 = float2
+		inputElements[1].SemanticName = "TEXCOORD";
+		inputElements[1].SemanticIndex = 0;						// First TEXCOORD semantic
+
+		// Third element - surface normal, 3 float values
+		inputElements[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+		inputElements[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;	// R32 G32 B32 = float3
+		inputElements[2].SemanticName = "NORMAL";
+		inputElements[2].SemanticIndex = 0;						// First NORMAL semantic
+
+		// Fourth element - tangent vector to normal, 3 float values
+		inputElements[3].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+		inputElements[3].Format = DXGI_FORMAT_R32G32B32_FLOAT;	// R32 G32 B32 = float3
+		inputElements[3].SemanticName = "TANGENT";
+		inputElements[3].SemanticIndex = 0;						// First TANGENT semantic
+	}
+
+	// Pointers that will be used when creating the Sky object
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> skyboxRootSig;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> skyboxPSO;
+
+	// Root Signature
+	{
+		// Define a table of CBV's (constant buffer views)
+		D3D12_DESCRIPTOR_RANGE cbvTableVS = {};
+		cbvTableVS.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		cbvTableVS.NumDescriptors = 1;
+		cbvTableVS.BaseShaderRegister = 0;
+		cbvTableVS.RegisterSpace = 0;
+		cbvTableVS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+		D3D12_DESCRIPTOR_RANGE cbvTablePS = {};
+		cbvTablePS.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		cbvTablePS.NumDescriptors = 1;
+		cbvTablePS.BaseShaderRegister = 0;
+		cbvTablePS.RegisterSpace = 0;
+		cbvTablePS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+		// Define the root parameters
+		D3D12_ROOT_PARAMETER rootParams[2] = {};
+
+		// First root param - vertex shader CB
+		rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+		rootParams[0].DescriptorTable.NumDescriptorRanges = 1;
+		rootParams[0].DescriptorTable.pDescriptorRanges = &cbvTableVS;
+
+		// Second root param - pixel shader CB
+		rootParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		rootParams[1].DescriptorTable.NumDescriptorRanges = 1;
+		rootParams[1].DescriptorTable.pDescriptorRanges = &cbvTablePS;
+
+		// Create a single static sampler (available to all pixel shaders)
+		D3D12_STATIC_SAMPLER_DESC anisoWrap = {};
+		anisoWrap.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.Filter = D3D12_FILTER_ANISOTROPIC;
+		anisoWrap.MaxAnisotropy = 16;
+		anisoWrap.MaxLOD = D3D12_FLOAT32_MAX;
+		anisoWrap.ShaderRegister = 0; // Will be in register(s0) in the shaders
+		anisoWrap.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		D3D12_STATIC_SAMPLER_DESC samplers[] = { anisoWrap };
+
+		// Describe and serialize the root signature
+		D3D12_ROOT_SIGNATURE_DESC rootSig = {};
+		rootSig.Flags =
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
+		rootSig.NumParameters = ARRAYSIZE(rootParams);
+		rootSig.pParameters = rootParams;
+		rootSig.NumStaticSamplers = ARRAYSIZE(samplers);
+		rootSig.pStaticSamplers = samplers;
+
+		ID3DBlob* serializedRootSig = 0;
+		ID3DBlob* errors = 0;
+
+		D3D12SerializeRootSignature(
+			&rootSig,
+			D3D_ROOT_SIGNATURE_VERSION_1,
+			&serializedRootSig,
+			&errors);
+
+		// Check for errors during serialization
+		if (errors != 0)
+		{
+			OutputDebugString((wchar_t*)errors->GetBufferPointer());
+		}
+
+		// Actually create the root sig
+		Graphics::Device->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(skyboxRootSig.GetAddressOf()));
+	}
+
+	// Pipeline state
+	{
+		// Describe the pipeline state
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+
+		// -- Input assembler related --
+		psoDesc.InputLayout.NumElements = inputElementCount;
+		psoDesc.InputLayout.pInputElementDescs = inputElements;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		// Overall primitive topology type (triangle, line, etc.) is set here
+		// IASetPrimTop() is still used to set list/strip/adj options
+
+		// Root sig
+		psoDesc.pRootSignature = skyboxRootSig.Get();
+
+		// -- Shaders (VS/PS) --
+		psoDesc.VS.pShaderBytecode = skyboxVertexShaderByteCode->GetBufferPointer();
+		psoDesc.VS.BytecodeLength = skyboxVertexShaderByteCode->GetBufferSize();
+		psoDesc.PS.pShaderBytecode = skyboxPixelShaderByteCode->GetBufferPointer();
+		psoDesc.PS.BytecodeLength = skyboxPixelShaderByteCode->GetBufferSize();
+
+		// -- Render targets --
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		psoDesc.SampleDesc.Count = 1;
+		psoDesc.SampleDesc.Quality = 0;
+
+		// -- States --
+		psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+		psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT; // Different from main PSO: cull front faces, render back faces
+		psoDesc.RasterizerState.DepthClipEnable = true;
+
+		psoDesc.DepthStencilState.DepthEnable = true;
+		psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL; // Different from main PSO: draw even if depth is equal to current depth buffer; the skybox is ALWAYS at max depth
+		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+
+		psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+		psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
+		psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+		// -- Misc --
+		psoDesc.SampleMask = 0xffffffff;
+
+		// Create the pipeline state object
+		Graphics::Device->CreateGraphicsPipelineState(
+			&psoDesc,
+			IID_PPV_ARGS(skyboxPSO.GetAddressOf()));
+	}
+
+	std::shared_ptr<Mesh> skyboxMesh = std::make_shared<Mesh>("Cube", FixPath(L"../../Assets/Meshes/cube.obj").c_str());
+
+	// Create skybox object
+	skybox = std::make_shared<Sky>(
+		skyboxMesh,
+		skyboxPSO,
+		FixPath(L"../../Assets/Textures/Planet/right.png").c_str(),
+		FixPath(L"../../Assets/Textures/Planet/left.png").c_str(),
+		FixPath(L"../../Assets/Textures/Planet/up.png").c_str(),
+		FixPath(L"../../Assets/Textures/Planet/down.png").c_str(),
+		FixPath(L"../../Assets/Textures/Planet/front.png").c_str(),
+		FixPath(L"../../Assets/Textures/Planet/back.png").c_str());
+}
+
+
+// --------------------------------------------------------
 // Handle resizing to match the new window size
 //  - Eventually, we'll want to update our 3D camera
 // --------------------------------------------------------
@@ -445,7 +650,8 @@ void Game::Draw(float deltaTime, float totalTime)
 		
 
 		// Draw
-		//Graphics::CommandList->DrawIndexedInstanced(3, 1, 0, 0, 0);
+
+		// Start with game entities
 		for (unsigned int i = 0; i < entities.size(); i++)
 		{
 			// Get data from this entity
@@ -499,6 +705,9 @@ void Game::Draw(float deltaTime, float totalTime)
 			// Finally, draw!
 			Graphics::CommandList->DrawIndexedInstanced(mesh->GetIndexCount(), 1, 0, 0, 0);
 		}
+
+		// Once they're done, draw the skybox (to avoid overdraw)
+		skybox->Draw(cameras[currentCameraIndex]);
 	}
 
 	// Present

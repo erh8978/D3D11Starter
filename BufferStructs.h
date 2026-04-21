@@ -24,3 +24,14 @@ struct PixelShaderExternalData
 	float padding;
 	DirectX::XMFLOAT3 cameraPos;
 };
+
+struct SkyboxVertexShaderExternalData
+{
+	DirectX::XMFLOAT4X4 view;
+	DirectX::XMFLOAT4X4 projection;
+};
+
+struct SkyboxPixelShaderExternalData
+{
+	unsigned int skyTextureIndex;
+};

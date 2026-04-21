@@ -23,6 +23,24 @@ struct Light
     float2 Padding;
 };
 
+// Struct representing a single vertex worth of data
+// - This should match the vertex definition in our C++ code
+// - By "match", I mean the size, order and number of members
+// - The name of the struct itself is unimportant, but should be descriptive
+// - Each variable must have a semantic, which defines its usage
+struct VertexShaderInput
+{
+	// Data type
+	//  |
+	//  |   Name          Semantic
+	//  |    |                |
+	//  v    v                v
+    float3 localPosition : POSITION; // XYZ position
+    float2 UV : TEXCOORD; // UV position
+    float3 Normal : NORMAL; // Normal direction
+    float3 Tangent : TANGENT; // Tangent direction
+};
+
 // Struct representing the data we're sending down the pipeline
 // - Should match our pixel shader's input (hence the name: Vertex to Pixel)
 // - At a minimum, we need a piece of data defined tagged as SV_POSITION
@@ -40,6 +58,12 @@ struct VertexToPixel
     float3 Normal           : NORMAL;
     float3 Tangent          : TANGENT;
     float3 worldPos         : POSITION;
+};
+
+struct SkyboxVertexToPixel
+{
+    float4 screenPosition : SV_POSITION;
+    float3 sampleDir : DIRECTION;
 };
 
 float Attenuate(Light light, float3 worldPos)

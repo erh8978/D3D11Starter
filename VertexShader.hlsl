@@ -1,23 +1,5 @@
 #include "ShaderIncludes.hlsli"
 
-// Struct representing a single vertex worth of data
-// - This should match the vertex definition in our C++ code
-// - By "match", I mean the size, order and number of members
-// - The name of the struct itself is unimportant, but should be descriptive
-// - Each variable must have a semantic, which defines its usage
-struct VertexShaderInput
-{ 
-	// Data type
-	//  |
-	//  |   Name          Semantic
-	//  |    |                |
-	//  v    v                v
-	float3 localPosition	: POSITION; // XYZ position
-	float2 UV				: TEXCOORD; // UV position
-	float3 Normal			: NORMAL;	// Normal direction
-	float3 Tangent			: TANGENT;	// Tangent direction
-};
-
 cbuffer ExternalData : register(b0)
 {
     matrix world;
@@ -33,7 +15,7 @@ cbuffer ExternalData : register(b0)
 // - Output is a single struct of data to pass down the pipeline
 // - Named "main" because that's the default the shader compiler looks for
 // --------------------------------------------------------
-VertexToPixel main( VertexShaderInput input )
+VertexToPixel main(VertexShaderInput input)
 {
 	// Set up output struct
 	VertexToPixel output;
