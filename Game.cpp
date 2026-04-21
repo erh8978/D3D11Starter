@@ -43,7 +43,8 @@ namespace
 	const unsigned int MAX_LIGHTS = 10;
 
 	// Skybox
-	std::shared_ptr<Sky> skybox;
+	std::vector<std::shared_ptr<Sky>> skyboxes;
+	unsigned int currentSkyboxIndex = 0;
 }
 
 // --------------------------------------------------------
@@ -518,8 +519,42 @@ void Game::CreateSkybox()
 
 	std::shared_ptr<Mesh> skyboxMesh = std::make_shared<Mesh>("Cube", FixPath(L"../../Assets/Meshes/cube.obj").c_str());
 
-	// Create skybox object
-	skybox = std::make_shared<Sky>(
+	// Create skybox objects
+	// Clouds Blue
+	skyboxes.push_back(std::make_shared<Sky>(
+		skyboxMesh,
+		skyboxPSO,
+		FixPath(L"../../Assets/Textures/Clouds Blue/right.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Blue/left.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Blue/up.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Blue/down.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Blue/front.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Blue/back.png").c_str()));
+
+	// Clouds Pink
+	skyboxes.push_back(std::make_shared<Sky>(
+		skyboxMesh,
+		skyboxPSO,
+		FixPath(L"../../Assets/Textures/Clouds Pink/right.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Pink/left.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Pink/up.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Pink/down.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Pink/front.png").c_str(),
+		FixPath(L"../../Assets/Textures/Clouds Pink/back.png").c_str()));
+
+	// Cold Sunset
+	skyboxes.push_back(std::make_shared<Sky>(
+		skyboxMesh,
+		skyboxPSO,
+		FixPath(L"../../Assets/Textures/Cold Sunset/right.png").c_str(),
+		FixPath(L"../../Assets/Textures/Cold Sunset/left.png").c_str(),
+		FixPath(L"../../Assets/Textures/Cold Sunset/up.png").c_str(),
+		FixPath(L"../../Assets/Textures/Cold Sunset/down.png").c_str(),
+		FixPath(L"../../Assets/Textures/Cold Sunset/front.png").c_str(),
+		FixPath(L"../../Assets/Textures/Cold Sunset/back.png").c_str()));
+
+	// Planet
+	skyboxes.push_back(std::make_shared<Sky>(
 		skyboxMesh,
 		skyboxPSO,
 		FixPath(L"../../Assets/Textures/Planet/right.png").c_str(),
@@ -527,7 +562,9 @@ void Game::CreateSkybox()
 		FixPath(L"../../Assets/Textures/Planet/up.png").c_str(),
 		FixPath(L"../../Assets/Textures/Planet/down.png").c_str(),
 		FixPath(L"../../Assets/Textures/Planet/front.png").c_str(),
-		FixPath(L"../../Assets/Textures/Planet/back.png").c_str());
+		FixPath(L"../../Assets/Textures/Planet/back.png").c_str()));
+
+	
 }
 
 
@@ -577,6 +614,12 @@ void Game::Update(float deltaTime, float totalTime)
 	// Example input checking: Quit if the escape key is pressed
 	if (Input::KeyDown(VK_ESCAPE))
 		Window::Quit();
+
+	// Increment skybox index when V is pressed
+	if (Input::KeyPress('V'))
+	{
+		currentSkyboxIndex = (currentSkyboxIndex + 1) % skyboxes.size();
+	}
 
 	// Update camera's position, angle, etc.
 	cameras[currentCameraIndex]->Update(deltaTime);
@@ -707,7 +750,7 @@ void Game::Draw(float deltaTime, float totalTime)
 		}
 
 		// Once they're done, draw the skybox (to avoid overdraw)
-		skybox->Draw(cameras[currentCameraIndex]);
+		skyboxes[currentSkyboxIndex]->Draw(cameras[currentCameraIndex]);
 	}
 
 	// Present
