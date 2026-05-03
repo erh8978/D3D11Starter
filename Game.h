@@ -3,6 +3,8 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
+#include "Graphics.h"
+
 class Game
 {
 public:
@@ -34,6 +36,14 @@ private:
 	// Pipeline
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
+
+	// Post-processing pipeline state
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> fullscreenPSO;
+
+	// GBuffer stuff
+	static const unsigned int NumRenderTargets = 4; // 0: Color | 1: Sun visibility | 2: Normals |  | 3: Depth
+	TextureInfo	GBuffer[NumRenderTargets]; // G-Buffer
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> GBufferHeap;
 
 	// Other graphics data
 	D3D12_VIEWPORT viewport{};

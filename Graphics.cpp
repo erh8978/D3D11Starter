@@ -792,6 +792,76 @@ unsigned int Graphics::LoadTexture(const wchar_t* file, bool generateMips)
 	return srvIndex;
 }
 
+Microsoft::WRL::ComPtr<ID3D12Resource> Graphics::CreateRenderTargetTexture(
+	unsigned int width,
+	unsigned int height,
+	DXGI_FORMAT textureFormat,
+	DirectX::XMFLOAT4 clearColor)
+{
+	D3D12_HEAP_PROPERTIES props = {};
+	props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	props.CreationNodeMask = 1;
+	props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	props.Type = D3D12_HEAP_TYPE_DEFAULT;
+	props.VisibleNodeMask = 1;
+
+	D3D12_RESOURCE_DESC desc = {};
+	desc.Alignment = 0;
+	desc.DepthOrArraySize = 1;
+	desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	desc.Format = textureFormat;
+	desc.Height = height;
+	desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	desc.MipLevels = 1;
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
+	desc.Width = width;
+
+	// Give the texture a default clear value
+	D3D12_CLEAR_VALUE defaultClearColor{};
+	defaultClearColor.Color[0] = clearColor.x;
+	defaultClearColor.Color[1] = clearColor.y;
+	defaultClearColor.Color[2] = clearColor.z;
+	defaultClearColor.Color[3] = clearColor.w;
+	defaultClearColor.Format = textureFormat;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> finalTexture;
+	Graphics::Device->CreateCommittedResource(
+		&props,
+		D3D12_HEAP_FLAG_NONE,
+		&desc,
+		D3D12_RESOURCE_STATE_COMMON,
+		&defaultClearColor,
+		IID_PPV_ARGS(finalTexture.GetAddressOf()));
+
+	return finalTexture;
+}
+
+void Graphics::ReserveDescriptorHeapSlot(
+	D3D12_CPU_DESCRIPTOR_HANDLE* CPUHandleToReserve,
+	D3D12_GPU_DESCRIPTOR_HANDLE* GPUHandleToReserve)
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = CBVSRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = CBVSRVDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+
+	cpuHandle.ptr += (SIZE_T)srvDescriptorOffset * cbvSrvDescriptorHeapIncrementSize;
+	gpuHandle.ptr += (SIZE_T)srvDescriptorOffset * cbvSrvDescriptorHeapIncrementSize;
+
+	// Set the requested handles
+	if (CPUHandleToReserve) { *CPUHandleToReserve = cpuHandle; }
+	if (GPUHandleToReserve) { *GPUHandleToReserve = gpuHandle; }
+
+	// Update the overall offset
+	if (CPUHandleToReserve || GPUHandleToReserve) srvDescriptorOffset++;
+}
+
+unsigned int Graphics::GetDescriptorIndex(D3D12_GPU_DESCRIPTOR_HANDLE handle)
+{
+	return (unsigned int)((handle.ptr - CBVSRVDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr) /
+		Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+}
+
 
 // --------------------------------------------------------
 // Resets the command allocator and list

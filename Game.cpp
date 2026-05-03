@@ -84,12 +84,18 @@ void Game::CreateRootSigAndPipelineState()
 	Microsoft::WRL::ComPtr<ID3DBlob> vertexShaderByteCode;
 	Microsoft::WRL::ComPtr<ID3DBlob> pixelShaderByteCode;
 
+	// Shaders for post processing
+	Microsoft::WRL::ComPtr<ID3DBlob> fullscreenVSByteCode;
+	Microsoft::WRL::ComPtr<ID3DBlob> SunRaysPSByteCode;
+
 	// Load shaders
 	{
 		// Read our compiled vertex shader code into a blob
 		// - Essentially just "open the file and plop its contents here"
 		D3DReadFileToBlob(FixPath(L"VertexShader.cso").c_str(), vertexShaderByteCode.GetAddressOf());
 		D3DReadFileToBlob(FixPath(L"PixelShader.cso").c_str(), pixelShaderByteCode.GetAddressOf());
+		D3DReadFileToBlob(FixPath(L"FullscreenVS.cso").c_str(), fullscreenVSByteCode.GetAddressOf());
+		D3DReadFileToBlob(FixPath(L"SunRaysPS.cso").c_str(), SunRaysPSByteCode.GetAddressOf());
 	}
 
 	// Input layout
@@ -224,8 +230,11 @@ void Game::CreateRootSigAndPipelineState()
 		psoDesc.PS.BytecodeLength = pixelShaderByteCode->GetBufferSize();
 
 		// -- Render targets --
-		psoDesc.NumRenderTargets = 1;
-		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.NumRenderTargets = NumRenderTargets;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // Color
+		psoDesc.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM; // Sun visibility
+		psoDesc.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_UNORM; // Normals
+		psoDesc.RTVFormats[3] = DXGI_FORMAT_R32_FLOAT;		// Depth
 		psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 		psoDesc.SampleDesc.Count = 1;
 		psoDesc.SampleDesc.Quality = 0;
@@ -251,6 +260,25 @@ void Game::CreateRootSigAndPipelineState()
 		Graphics::Device->CreateGraphicsPipelineState(
 			&psoDesc,
 			IID_PPV_ARGS(pipelineState.GetAddressOf()));
+		
+		// Second PSO for post processes
+
+		// -- Shaders (VS/PS) --
+		psoDesc.VS.pShaderBytecode = fullscreenVSByteCode->GetBufferPointer();
+		psoDesc.VS.BytecodeLength = fullscreenVSByteCode->GetBufferSize();
+		psoDesc.PS.pShaderBytecode = SunRaysPSByteCode->GetBufferPointer();
+		psoDesc.PS.BytecodeLength = SunRaysPSByteCode->GetBufferSize();
+
+		// -- Render targets --
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN; // Means that we won't be using these 'extra' render targets
+		psoDesc.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+		psoDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
+
+		// Create the pipeline state object
+		Graphics::Device->CreateGraphicsPipelineState(
+			&psoDesc,
+			IID_PPV_ARGS(fullscreenPSO.GetAddressOf()));
 	}
 
 	// Set up the viewport and scissor rectangle
@@ -276,6 +304,72 @@ void Game::CreateRootSigAndPipelineState()
 		scissorRect.right = Window::Width();
 		scissorRect.bottom = Window::Height();
 	}
+
+	// Set up the G-Buffer
+	// RTV heap
+	D3D12_DESCRIPTOR_HEAP_DESC gBufferHeapDesc{};
+	gBufferHeapDesc.NumDescriptors = NumRenderTargets;
+	gBufferHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	Graphics::Device->CreateDescriptorHeap(&gBufferHeapDesc, IID_PPV_ARGS(GBufferHeap.GetAddressOf()));
+
+	// Get a pointer to the start of the RTV heap so we know where to put RTV descriptors
+	D3D12_CPU_DESCRIPTOR_HANDLE gBufferHeapStart = GBufferHeap->GetCPUDescriptorHandleForHeapStart();
+	unsigned int descSize = Graphics::Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV); // And the size of an RTV descriptor
+
+	// Create each render target for the G-Buffer
+	GBuffer[0].Texture = Graphics::CreateRenderTargetTexture(Window::Width(), Window::Height()); // Colors
+	GBuffer[1].Texture = Graphics::CreateRenderTargetTexture(Window::Width(), Window::Height()); // Sun visibility
+	GBuffer[2].Texture = Graphics::CreateRenderTargetTexture(Window::Width(), Window::Height()); // Normals
+	GBuffer[3].Texture = Graphics::CreateRenderTargetTexture(Window::Width(), Window::Height(), DXGI_FORMAT_R32_FLOAT, DirectX::XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f)); // Depth
+
+	// Make sure the handles point to the correct, contiguous spots in the RTV heap
+	for (unsigned int i = 0; i < NumRenderTargets; i++)
+	{
+		GBuffer[i].RTV = gBufferHeapStart;
+		GBuffer[i].RTV.ptr += descSize * i;
+	}
+
+	// Create the RTVs
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{};
+	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+	rtvDesc.Texture2D.MipSlice = 0;
+	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+	// Create the RTVs sequentially
+	Graphics::Device->CreateRenderTargetView(GBuffer[0].Texture.Get(), &rtvDesc, GBuffer[0].RTV);
+	Graphics::Device->CreateRenderTargetView(GBuffer[1].Texture.Get(), &rtvDesc, GBuffer[1].RTV);
+	Graphics::Device->CreateRenderTargetView(GBuffer[2].Texture.Get(), &rtvDesc, GBuffer[2].RTV);
+
+	// Change the format for depth
+	rtvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	Graphics::Device->CreateRenderTargetView(GBuffer[3].Texture.Get(), &rtvDesc, GBuffer[3].RTV);
+
+	// Create an SRV for each texture
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Texture2D.MipLevels = 1;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+	// Reserve 4 SRVs
+	for (unsigned int i = 0; i < NumRenderTargets; i++)
+	{
+		Graphics::ReserveDescriptorHeapSlot(&GBuffer[i].SRV.CPUHandle, &GBuffer[i].SRV.GPUHandle);
+	}
+
+	// Make the SRVs
+	Graphics::Device->CreateShaderResourceView(GBuffer[0].Texture.Get(), &srvDesc, GBuffer[0].SRV.CPUHandle);
+	Graphics::Device->CreateShaderResourceView(GBuffer[1].Texture.Get(), &srvDesc, GBuffer[1].SRV.CPUHandle);
+	Graphics::Device->CreateShaderResourceView(GBuffer[2].Texture.Get(), &srvDesc, GBuffer[2].SRV.CPUHandle);
+
+	// Change format for depth
+	srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	Graphics::Device->CreateShaderResourceView(GBuffer[3].Texture.Get(), &srvDesc, GBuffer[3].SRV.CPUHandle);
+
+	// Update indices
+	for (unsigned int i = 0; i < NumRenderTargets; i++)
+		GBuffer[i].SRV.GPUDescriptorIndex = Graphics::GetDescriptorIndex(GBuffer[i].SRV.GPUHandle);
 }
 
 
@@ -488,8 +582,11 @@ void Game::CreateSkybox()
 		psoDesc.PS.BytecodeLength = skyboxPixelShaderByteCode->GetBufferSize();
 
 		// -- Render targets --
-		psoDesc.NumRenderTargets = 1;
+		psoDesc.NumRenderTargets = 2;
 		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+		psoDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
 		psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 		psoDesc.SampleDesc.Count = 1;
 		psoDesc.SampleDesc.Quality = 0;
@@ -670,6 +767,25 @@ void Game::Draw(float deltaTime, float totalTime)
 			1.0f,	// Max depth = 1.0f
 			0,		// Not clearing stencil, but need a value
 			0, 0); // No scissor rects
+
+		// Transition and clear GBuffer render targets
+		float depthClearColor[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+		for (unsigned int i = 0; i < NumRenderTargets; i++)
+		{
+			rb.Transition.pResource = GBuffer[i].Texture.Get();
+			rb.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+			rb.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+			Graphics::CommandList->ResourceBarrier(1, &rb);
+
+			if (i == 3)
+			{
+				Graphics::CommandList->ClearRenderTargetView(GBuffer[i].RTV, depthClearColor, 0, 0);
+			}
+			else
+			{
+				Graphics::CommandList->ClearRenderTargetView(GBuffer[i].RTV, color, 0, 0);
+			}
+		}
 	}
 
 	// Rendering here!
@@ -686,7 +802,10 @@ void Game::Draw(float deltaTime, float totalTime)
 
 		// Set up other commands for rendering
 		Graphics::CommandList->OMSetRenderTargets(
-			1, &Graphics::RTVHandles[Graphics::SwapChainIndex()], true, &Graphics::DSVHandle);
+			NumRenderTargets, // Using multiple render targets
+			&GBuffer[0].RTV,
+			true,
+			&Graphics::DSVHandle);
 		Graphics::CommandList->RSSetViewports(1, &viewport);
 		Graphics::CommandList->RSSetScissorRects(1, &scissorRect);
 		Graphics::CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -751,6 +870,56 @@ void Game::Draw(float deltaTime, float totalTime)
 
 		// Once they're done, draw the skybox (to avoid overdraw)
 		skyboxes[currentSkyboxIndex]->Draw(cameras[currentCameraIndex]);
+	}
+
+	// Go back to the back buffer
+	Graphics::CommandList->OMSetRenderTargets(1, &Graphics::RTVHandles[Graphics::SwapChainIndex()], true, &Graphics::DSVHandle);
+
+	// Transition GBuffer textures back so they can be used in the post processing pixel shader
+	for (unsigned int i = 0; i < NumRenderTargets; i++)
+	{
+		D3D12_RESOURCE_BARRIER rb = {};
+		rb.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		rb.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		rb.Transition.pResource = GBuffer[i].Texture.Get();
+		rb.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		rb.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		rb.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		Graphics::CommandList->ResourceBarrier(1, &rb);
+	}
+
+	// Run the SSAO post-process
+	{
+		Graphics::CommandList->SetPipelineState(fullscreenPSO.Get());
+		Graphics::CommandList->SetGraphicsRootSignature(rootSignature.Get());
+
+		// Calculate screenspace sun position
+		XMFLOAT4X4 v = cameras[currentCameraIndex]->GetViewMatrix();
+		XMFLOAT4X4 p = cameras[currentCameraIndex]->GetProjectionMatrix();
+
+		XMVECTOR sunDirection = XMLoadFloat3(&skyboxes[currentSkyboxIndex]->_sunDir);
+		XMMATRIX view = XMLoadFloat4x4(&v);
+		XMMATRIX projection = XMLoadFloat4x4(&p);
+
+		XMVECTOR ssp = XMVector3Transform(sunDirection, XMMatrixMultiply(view, projection));
+
+		XMFLOAT4 screenSunPos;
+		XMStoreFloat4(&screenSunPos, ssp);
+		screenSunPos.x = (screenSunPos.x / screenSunPos.w + 1) / 2;
+		screenSunPos.y = (-screenSunPos.y / screenSunPos.w + 1) / 2;
+		screenSunPos.z = (screenSunPos.z / screenSunPos.w + 1) / 2;
+
+
+		SunRaysPixelShaderExternalData sunRaysData = {};
+		sunRaysData.colorIndex = GBuffer[0].SRV.GPUDescriptorIndex;
+		sunRaysData.sunVisibilityIndex = GBuffer[1].SRV.GPUDescriptorIndex;
+		sunRaysData.normalsIndex = GBuffer[2].SRV.GPUDescriptorIndex;
+		sunRaysData.depthIndex = GBuffer[3].SRV.GPUDescriptorIndex;
+		sunRaysData.screenSunPos = screenSunPos;
+
+		D3D12_GPU_DESCRIPTOR_HANDLE ssaoDataCbvHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(&sunRaysData, sizeof(PixelShaderExternalData));
+		Graphics::CommandList->SetGraphicsRootDescriptorTable(1, ssaoDataCbvHandle); // Goes in descriptor table index 1, not 0!
+		Graphics::CommandList->DrawInstanced(3, 1, 0, 0);
 	}
 
 	// Present

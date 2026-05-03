@@ -16,6 +16,14 @@ cbuffer ExternalData : register(b0)
 
 SamplerState BasicSampler : register(s0);
 
+struct PS_Output
+{
+    float4 color            : SV_TARGET0; // MRT index 0
+    float4 sunVisibility    : SV_TARGET1; // MRT index 1
+    float4 normals          : SV_TARGET2; // MRT index 2... and so on
+    float depth             : SV_TARGET3;
+};
+
 // --------------------------------------------------------
 // The entry point (main method) for our pixel shader
 // 
@@ -25,7 +33,7 @@ SamplerState BasicSampler : register(s0);
 //    "put the output of this into the current render target"
 // - Named "main" because that's the default the shader compiler looks for
 // --------------------------------------------------------
-float4 main(VertexToPixel input) : SV_TARGET
+PS_Output main(VertexToPixel input) // Semantics are now handled in the PS_Output struct, so no semantic here!
 {
     // Get bindless textures using ResourceDescriptorHeap (intellisense does not understand this; it's fine)
     Texture2D AlbedoMap = ResourceDescriptorHeap[albedoMapIndex];
@@ -114,5 +122,13 @@ float4 main(VertexToPixel input) : SV_TARGET
     }
     
     // Lastly, gamma correct the total light
-    return GammaCorrect(float4(lightTotal, 1), 1.0 / 2.2);
+    float4 finalColor = GammaCorrect(float4(lightTotal, 1), 1.0 / 2.2);
+    
+    // Build output struct and return it
+    PS_Output output;
+    output.color = finalColor;
+    output.sunVisibility = float4(0, 0, 0, 0);
+    output.normals = float4(finalNormal * 0.5f + 0.5f, 1); // Normal has to be repacked
+    output.depth = input.screenPosition.z;
+    return output;
 }

@@ -13,10 +13,12 @@ Sky::Sky(
 	const wchar_t* up,
 	const wchar_t* down,
 	const wchar_t* front,
-	const wchar_t* back)
+	const wchar_t* back,
+	DirectX::XMFLOAT3 sunDir)
 {
 	_mesh = mesh;
 	_pipelineState = pso;
+	_sunDir = sunDir;
 
 	_skyTextureIndex = Graphics::CreateCubemap(right, left, up, down, front, back);
 }
@@ -44,6 +46,7 @@ void Sky::Draw(std::shared_ptr<Camera> camera)
 	// Now do it for the skybox's pixel shader data
 	SkyboxPixelShaderExternalData psData = {};
 	psData.skyTextureIndex = _skyTextureIndex;
+	psData.sunDir = _sunDir;
 
 	// Get GPU address and add it to the root signature, this time in a different root param
 	D3D12_GPU_DESCRIPTOR_HANDLE psDataCbvHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(&psData, sizeof(SkyboxPixelShaderExternalData));

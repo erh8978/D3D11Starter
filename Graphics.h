@@ -5,9 +5,24 @@
 #include <dxgi1_6.h>
 #include <string>
 #include <wrl/client.h>
+#include <DirectXMath.h>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
+
+struct DescriptorInfo
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle{};
+	D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle{};
+	unsigned int GPUDescriptorIndex = -1;
+};
+
+struct TextureInfo
+{
+	Microsoft::WRL::ComPtr<ID3D12Resource> Texture;
+	DescriptorInfo SRV;
+	D3D12_CPU_DESCRIPTOR_HANDLE RTV{};
+};
 
 namespace Graphics
 {
@@ -70,6 +85,15 @@ namespace Graphics
 	void ResizeBuffers(unsigned int width, unsigned int height);
 	void AdvanceSwapChainIndex();
 	unsigned int LoadTexture(const wchar_t* file, bool generateMips = true);
+	Microsoft::WRL::ComPtr<ID3D12Resource> CreateRenderTargetTexture(
+		unsigned int width,
+		unsigned int height,
+		DXGI_FORMAT textureFormat = DXGI_FORMAT_R8G8B8A8_UNORM,
+		DirectX::XMFLOAT4 clearColor = DirectX::XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f));
+	void ReserveDescriptorHeapSlot(
+		D3D12_CPU_DESCRIPTOR_HANDLE* CPUHandleToReserve,
+		D3D12_GPU_DESCRIPTOR_HANDLE* GPUHandleToReserve);
+	unsigned int GetDescriptorIndex(D3D12_GPU_DESCRIPTOR_HANDLE handle);
 
 	// Resource Creation
 	Microsoft::WRL::ComPtr<ID3D12Resource> CreateStaticBuffer(size_t dataStride, size_t dataCount, void* data);

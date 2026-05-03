@@ -11,6 +11,7 @@ class Sky
 public:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> _pipelineState;
 	unsigned int _skyTextureIndex;
+	DirectX::XMFLOAT3 _sunDir;
 
 	//Microsoft::WRL::ComPtr<ID3D11SamplerState> _samplerState;
 	//Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _SRV;
@@ -27,7 +28,8 @@ public:
 		const wchar_t* up,
 		const wchar_t* down,
 		const wchar_t* front,
-		const wchar_t* back);
+		const wchar_t* back,
+		DirectX::XMFLOAT3 sunDir = DirectX::XMFLOAT3(0.0f, 0.0f, 1.0f));
 
 	~Sky();
 

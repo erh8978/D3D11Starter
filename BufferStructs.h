@@ -34,4 +34,14 @@ struct SkyboxVertexShaderExternalData
 struct SkyboxPixelShaderExternalData
 {
 	unsigned int skyTextureIndex;
+	DirectX::XMFLOAT3 sunDir;
+};
+
+struct SunRaysPixelShaderExternalData
+{
+	unsigned int colorIndex;
+	unsigned int sunVisibilityIndex;
+	unsigned int normalsIndex;
+	unsigned int depthIndex;
+	DirectX::XMFLOAT4 screenSunPos;
 };
