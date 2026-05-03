@@ -659,9 +659,8 @@ void Game::CreateSkybox()
 		FixPath(L"../../Assets/Textures/Planet/up.png").c_str(),
 		FixPath(L"../../Assets/Textures/Planet/down.png").c_str(),
 		FixPath(L"../../Assets/Textures/Planet/front.png").c_str(),
-		FixPath(L"../../Assets/Textures/Planet/back.png").c_str()));
-
-	
+		FixPath(L"../../Assets/Textures/Planet/back.png").c_str(),
+		XMFLOAT3(0.0f, -0.2f, 1.0f)));
 }
 
 
@@ -895,9 +894,13 @@ void Game::Draw(float deltaTime, float totalTime)
 
 		// Calculate screenspace sun position
 		XMFLOAT4X4 v = cameras[currentCameraIndex]->GetViewMatrix();
+		// Cancel out transform
+		v._41 = 0.0f;
+		v._42 = 0.0f;
+		v._43 = 0.0f;
 		XMFLOAT4X4 p = cameras[currentCameraIndex]->GetProjectionMatrix();
 
-		XMVECTOR sunDirection = XMLoadFloat3(&skyboxes[currentSkyboxIndex]->_sunDir);
+		XMVECTOR sunDirection = XMVector3Normalize(XMLoadFloat3(&skyboxes[currentSkyboxIndex]->_sunDir));
 		XMMATRIX view = XMLoadFloat4x4(&v);
 		XMMATRIX projection = XMLoadFloat4x4(&p);
 
@@ -905,9 +908,9 @@ void Game::Draw(float deltaTime, float totalTime)
 
 		XMFLOAT4 screenSunPos;
 		XMStoreFloat4(&screenSunPos, ssp);
-		screenSunPos.x = (screenSunPos.x / screenSunPos.w + 1) / 2;
-		screenSunPos.y = (-screenSunPos.y / screenSunPos.w + 1) / 2;
-		screenSunPos.z = (screenSunPos.z / screenSunPos.w + 1) / 2;
+		screenSunPos.x = ((screenSunPos.x / screenSunPos.w) + 1) / 2;
+		screenSunPos.y = ((-screenSunPos.y / screenSunPos.w) + 1) / 2;
+		screenSunPos.z = ((screenSunPos.z / screenSunPos.w) + 1) / 2;
 
 
 		SunRaysPixelShaderExternalData sunRaysData = {};

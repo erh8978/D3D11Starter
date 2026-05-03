@@ -1,6 +1,6 @@
 #define NUM_SAMPLES 100
 #define Density 1
-#define Weight 0.02
+#define Weight 0.01
 #define Decay 0.99
 #define Exposure 1
 
@@ -32,6 +32,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     float2 UV = input.UV;
     
     // Adapted from https://developer.nvidia.com/gpugems/gpugems3/part-ii-light-and-shadows/chapter-13-volumetric-light-scattering-post-process
+    // Calculate vector from pixel to sun in screen space
     float2 deltaUV = (UV - screenLightPos.xy);
     deltaUV *= 1.0f / NUM_SAMPLES * Density;
     float3 color = albedoTexture.Sample(BasicSampler, input.UV);
@@ -45,4 +46,6 @@ float4 main(VertexToPixel input) : SV_TARGET
         illuminationDecay *= Decay;
     }
     return float4(color * Exposure, 1);
+    return sunVisibilityTexture.Sample(BasicSampler, input.UV);
+
 }
